@@ -3,6 +3,7 @@ from supabase import create_client
 import pandas as pd
 import plotly.graph_objects as go
 import requests
+import yfinance as yf
 from datetime import datetime
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
@@ -171,27 +172,74 @@ def load_investimentos() -> pd.DataFrame:
     return df
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_precos_brapi(tickers_br: tuple, tickers_us: tuple) -> tuple:
-    """Retorna (dict_precos, usd_brl)."""
-    prices = {}
-    usd_brl = 5.75
-    all_tks = list(set(list(tickers_br) + list(tickers_us)))
-    if not all_tks:
-        return prices, usd_brl
+def fetch_usd_brl() -> float:
+    """Retorna cotação USD/BRL."""
     try:
-        url = f"https://brapi.dev/api/quote/{','.join(all_tks)}?token={BRAPI_TOKEN}"
+        r = requests.get("https://economia.awesomeapi.com.br/json/last/USD-BRL", timeout=5)
+        return float(r.json()["USDBRL"]["bid"])
+    except Exception:
+        pass
+    try:
+        t = yf.Ticker("USDBRL=X")
+        h = t.history(period="1d")
+        if not h.empty:
+            return float(h["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 5.75
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_precos_br(tickers_br: tuple) -> dict:
+    """Retorna preços de ativos BR via BRAPI."""
+    prices = {}
+    if not tickers_br:
+        return prices
+    try:
+        tks = [t + ".SA" if not t.endswith(".SA") else t for t in tickers_br]
+        url = f"https://brapi.dev/api/quote/{','.join(tickers_br)}?token={BRAPI_TOKEN}"
         resp = requests.get(url, timeout=15)
         if resp.ok:
             for item in resp.json().get("results", []):
                 if item and item.get("regularMarketPrice"):
+                    sym = item["symbol"].replace(".SA", "")
+                    prices[sym] = item["regularMarketPrice"]
                     prices[item["symbol"]] = item["regularMarketPrice"]
     except Exception:
         pass
+    return prices
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_precos_us(tickers_us: tuple) -> dict:
+    """Retorna preços de ativos US via yfinance."""
+    prices = {}
+    if not tickers_us:
+        return prices
     try:
-        r2 = requests.get("https://economia.awesomeapi.com.br/json/last/USD-BRL", timeout=5)
-        usd_brl = float(r2.json()["USDBRL"]["bid"])
+        tks_str = " ".join(tickers_us)
+        data = yf.download(tks_str, period="2d", auto_adjust=True, progress=False)
+        if not data.empty:
+            close = data["Close"] if "Close" in data.columns else data.xs("Close", axis=1, level=0)
+            if hasattr(close, "columns"):
+                for tk in tickers_us:
+                    if tk in close.columns:
+                        v = close[tk].dropna()
+                        if not v.empty:
+                            prices[tk] = float(v.iloc[-1])
+            else:
+                v = close.dropna()
+                if not v.empty and len(tickers_us) == 1:
+                    prices[tickers_us[0]] = float(v.iloc[-1])
     except Exception:
         pass
+    return prices
+
+# mantido para compatibilidade de assinatura em locais que chamam com dois args
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_precos_brapi(tickers_br: tuple, tickers_us: tuple) -> tuple:
+    """Retorna (dict_precos_br+us, usd_brl)."""
+    prices = fetch_precos_br(tickers_br)
+    prices.update(fetch_precos_us(tickers_us))
+    usd_brl = fetch_usd_brl()
     return prices, usd_brl
 
 
