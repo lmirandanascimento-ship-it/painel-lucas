@@ -769,7 +769,7 @@ def tab_evolucao(historico: pd.DataFrame):
     n = len(historico)
     fig.add_trace(go.Scatter(
         x=historico["data"],
-        y=[CAPITAL_BASE_BRL] * n,
+        y=[CAPITAL_BASE] * n,
         mode="lines", name="Capital Base",
         line=dict(color=OURO, width=1.5, dash="dash"),
         hoverinfo="skip",
