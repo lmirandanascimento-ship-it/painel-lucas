@@ -182,7 +182,7 @@ def load_emprestimos_concedidos() -> pd.DataFrame:
            .select("*, devedores(nome, categoria)")
            .order("devedor_id")
            .order("status")
-           .order("dia_vencimento")
+           .order("data_emprestimo")
            .execute())
     if not r.data:
         return pd.DataFrame()
@@ -849,6 +849,8 @@ def tab_emprestimos(emp: pd.DataFrame):
                     dev_nome = dev_row["nome"]
                     emp_dev  = emp_conc_df[emp_conc_df["devedor_id"] == dev_id] if not emp_conc_df.empty else pd.DataFrame()
                     ativos_d = emp_dev[emp_dev["status"] == "ativo"]  if not emp_dev.empty else pd.DataFrame()
+                    if not ativos_d.empty:
+                        ativos_d = ativos_d.sort_values("data_emprestimo").reset_index(drop=True)
                     quit_d   = emp_dev[emp_dev["status"] == "quitado"] if not emp_dev.empty else pd.DataFrame()
 
                     # KPIs do devedor
@@ -890,8 +892,19 @@ def tab_emprestimos(emp: pd.DataFrame):
 
                     if not quit_d.empty:
                         with st.expander(f"✅ Quitados ({len(quit_d)})"):
-                            df_qt = quit_d[["titulo","valor_original","data_emprestimo"]].copy()
-                            df_qt.columns = ["Título","Valor Original","Data Emp."]
+                            # Buscar data de quitação (último pagamento de cada contrato quitado)
+                            datas_quit = {}
+                            if not pagtos_d.empty:
+                                for _, qrow in quit_d.iterrows():
+                                    pq = pagtos_d[pagtos_d["emprestimo_id"] == int(qrow["id"])]
+                                    if not pq.empty:
+                                        datas_quit[int(qrow["id"])] = pq["data_pagamento"].max()
+                            df_qt = quit_d[["id","titulo","valor_original","data_emprestimo"]].copy()
+                            df_qt["Data Quit."] = df_qt["id"].map(
+                                lambda x: datas_quit[x].strftime("%d/%m/%Y") if x in datas_quit else "—"
+                            )
+                            df_qt = df_qt[["titulo","valor_original","data_emprestimo","Data Quit."]]
+                            df_qt.columns = ["Título","Valor Original","Data Emp.","Data Quit."]
                             df_qt["Valor Original"] = df_qt["Valor Original"].apply(brl)
                             df_qt["Data Emp."] = df_qt["Data Emp."].dt.strftime("%d/%m/%Y").fillna("—")
                             st.dataframe(df_qt, use_container_width=True, hide_index=True)
@@ -918,6 +931,7 @@ def tab_emprestimos(emp: pd.DataFrame):
                                                         key=f"pag_val_{dev_id}")
                             data_p  = cp2.date_input("Data do recebimento",
                                                       value=datetime.now().date(),
+                                                      format="DD/MM/YYYY",
                                                       key=f"pag_data_{dev_id}")
                             obs_p   = st.text_input("Observação", key=f"pag_obs_{dev_id}")
 
@@ -953,37 +967,41 @@ def tab_emprestimos(emp: pd.DataFrame):
                                 except Exception as e:
                                     st.error(f"Erro: {e}")
 
-                    # ── Histórico de pagamentos deste devedor ─────────────────
-                    with st.expander("📜 Histórico de Pagamentos"):
+                    # ── Histórico de pagamentos por contrato ──────────────
+                    with st.expander("📜 Histórico de Pagamentos por Contrato"):
                         if pagtos_d.empty:
-                            st.info("Nenhum pagamento registrado.")
+                            st.info("Nenhum pagamento registrado ainda.")
                         else:
-                            if not emp_dev.empty:
-                                pagtos_show = pagtos_d.merge(
-                                    emp_dev[["id","titulo"]].rename(columns={"id":"emprestimo_id"}),
-                                    on="emprestimo_id", how="left"
-                                )
+                            # Iterar por cada contrato (ativos + quitados) com pagamentos
+                            todos_emp_dev = pd.concat([ativos_d, quit_d], ignore_index=True) if not quit_d.empty else ativos_d.copy()
+                            if todos_emp_dev.empty:
+                                st.info("Nenhum contrato encontrado.")
                             else:
-                                pagtos_show = pagtos_d.copy()
-                                pagtos_show["titulo"] = "—"
-                            cols_h = ["titulo","data_pagamento","valor_pago",
-                                      "juros","amortizacao","saldo_antes","saldo_depois","observacao"]
-                            cols_h = [c for c in cols_h if c in pagtos_show.columns]
-                            df_hist = pagtos_show[cols_h].copy()
-                            df_hist = df_hist.sort_values("data_pagamento", ascending=False)
-                            rename_h = {
-                                "titulo": "Contrato", "data_pagamento": "Data",
-                                "valor_pago": "Valor Pago", "juros": "Juros",
-                                "amortizacao": "Amortização",
-                                "saldo_antes": "Saldo Antes", "saldo_depois": "Saldo Depois",
-                                "observacao": "Obs",
-                            }
-                            df_hist = df_hist.rename(columns=rename_h)
-                            df_hist["Data"] = df_hist["Data"].dt.strftime("%d/%m/%Y")
-                            for col_brl in ["Valor Pago","Juros","Amortização","Saldo Antes","Saldo Depois"]:
-                                if col_brl in df_hist.columns:
-                                    df_hist[col_brl] = df_hist[col_brl].apply(brl)
-                            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+                                for _, row_c in todos_emp_dev.sort_values("data_emprestimo").iterrows():
+                                    emp_id_c  = int(row_c["id"])
+                                    titulo_c  = row_c["titulo"]
+                                    status_c  = row_c["status"]
+                                    pagtos_c  = pagtos_d[pagtos_d["emprestimo_id"] == emp_id_c].copy()
+                                    if pagtos_c.empty:
+                                        continue
+                                    pagtos_c  = pagtos_c.sort_values("data_pagamento")
+                                    badge     = "✅" if status_c == "quitado" else "📋"
+                                    total_c   = float(pagtos_c["valor_pago"].sum())
+                                    st.markdown(
+                                        f"**{badge} {titulo_c}** &nbsp;·&nbsp; "
+                                        f"{len(pagtos_c)} pagamentos &nbsp;·&nbsp; "
+                                        f"Total recebido: **{brl(total_c)}**"
+                                    )
+                                    df_pc = pagtos_c[["data_pagamento","valor_pago","juros",
+                                                       "amortizacao","saldo_depois","observacao"]].copy()
+                                    df_pc.columns = ["Data","Valor Pago","Juros","Amortização","Saldo Após","Obs"]
+                                    df_pc["Data"]        = df_pc["Data"].dt.strftime("%d/%m/%Y")
+                                    df_pc["Valor Pago"]  = df_pc["Valor Pago"].apply(brl)
+                                    df_pc["Juros"]       = df_pc["Juros"].apply(brl)
+                                    df_pc["Amortização"] = df_pc["Amortização"].apply(brl)
+                                    df_pc["Saldo Após"]  = df_pc["Saldo Após"].apply(brl)
+                                    st.dataframe(df_pc, use_container_width=True, hide_index=True)
+                                    st.markdown("")
 
                     # ── Novo empréstimo para este devedor ─────────────────────
                     with st.expander(f"➕ Novo Empréstimo para {dev_nome}"):
@@ -991,6 +1009,7 @@ def tab_emprestimos(emp: pd.DataFrame):
                         new_titulo  = nc1.text_input("Título", key=f"ne_tit_{dev_id}")
                         new_data    = nc2.date_input("Data do empréstimo",
                                                       value=datetime.now().date(),
+                                                      format="DD/MM/YYYY",
                                                       key=f"ne_data_{dev_id}")
                         new_valor   = nc1.number_input("Valor (R$)", min_value=0.0,
                                                         step=1000.0, key=f"ne_val_{dev_id}")
