@@ -274,11 +274,106 @@ def tab_resumo(snap_rv, snap_rf, posicoes_rv):
     c_btn, c_status = st.columns([2, 6])
     with c_btn:
         if st.button("🔄 Atualizar Cotações", type="secondary"):
-            st.cache_data.clear()
+            with st.spinner("Buscando cotações..."):
+                st.cache_data.clear()
+                ok_list, fail_list = [], []
+
+                # — USD/BRL —
+                try:
+                    r = requests.get("https://economia.awesomeapi.com.br/json/last/USD-BRL", timeout=5)
+                    usd_val = float(r.json()["USDBRL"]["bid"])
+                    ok_list.append(f"USD/BRL → {usd_val:.4f}")
+                except Exception:
+                    try:
+                        h = yf.Ticker("USDBRL=X").history(period="1d")
+                        usd_val = float(h["Close"].iloc[-1])
+                        ok_list.append(f"USD/BRL → {usd_val:.4f} (yfinance)")
+                    except Exception:
+                        fail_list.append("USD/BRL")
+
+                # — Tickers BR —
+                tickers_br_up, tickers_us_up = [], []
+                if not posicoes_rv.empty:
+                    tickers_br_up = posicoes_rv[posicoes_rv["moeda"] == "BRL"]["ticker"].tolist()
+                    tickers_us_up = posicoes_rv[posicoes_rv["moeda"] == "USD"]["ticker"].tolist()
+
+                if tickers_br_up:
+                    try:
+                        url = f"https://brapi.dev/api/quote/{','.join(tickers_br_up)}?token={BRAPI_TOKEN}"
+                        resp = requests.get(url, timeout=15)
+                        found = {}
+                        if resp.ok:
+                            for item in resp.json().get("results", []):
+                                if item and item.get("regularMarketPrice"):
+                                    sym = item["symbol"].replace(".SA", "")
+                                    found[sym] = item["regularMarketPrice"]
+                        for tk in tickers_br_up:
+                            tk_c = tk.replace(".SA", "")
+                            if tk_c in found:
+                                ok_list.append(f"{tk_c} → R$ {found[tk_c]:.2f}")
+                            else:
+                                fail_list.append(tk_c)
+                    except Exception:
+                        fail_list.extend([t.replace(".SA", "") for t in tickers_br_up])
+
+                # — Tickers US —
+                if tickers_us_up:
+                    try:
+                        tks_str = " ".join(tickers_us_up)
+                        data_yf = yf.download(tks_str, period="2d", auto_adjust=True, progress=False)
+                        if not data_yf.empty:
+                            close = (data_yf["Close"] if "Close" in data_yf.columns
+                                     else data_yf.xs("Close", axis=1, level=0))
+                            if hasattr(close, "columns"):
+                                for tk in tickers_us_up:
+                                    if tk in close.columns:
+                                        v = close[tk].dropna()
+                                        if not v.empty:
+                                            ok_list.append(f"{tk} → USD {float(v.iloc[-1]):.2f}")
+                                        else:
+                                            fail_list.append(tk)
+                                    else:
+                                        fail_list.append(tk)
+                            else:
+                                v = close.dropna()
+                                if not v.empty and len(tickers_us_up) == 1:
+                                    ok_list.append(f"{tickers_us_up[0]} → USD {float(v.iloc[-1]):.2f}")
+                                else:
+                                    fail_list.extend(tickers_us_up)
+                        else:
+                            fail_list.extend(tickers_us_up)
+                    except Exception:
+                        fail_list.extend(tickers_us_up)
+
+                st.session_state["ultima_atualizacao"] = {
+                    "ok":   ok_list,
+                    "fail": fail_list,
+                    "hora": datetime.now().strftime("%H:%M:%S"),
+                }
             st.rerun()
+
     with c_status:
         data_rv = snap_rv.get("data","—") if snap_rv else "—"
         st.caption(f"RV: snapshot de {data_rv} · RF: snapshot de {snap_rf.get('data','—') if snap_rf else '—'} · USD/BRL: {usd_brl:.4f}")
+
+    # ── Resultado da última atualização ─────────────────────────────────────────
+    if "ultima_atualizacao" in st.session_state:
+        res    = st.session_state["ultima_atualizacao"]
+        n_ok   = len(res["ok"])
+        n_fail = len(res["fail"])
+        cor    = "🟢" if n_fail == 0 else ("🟡" if n_ok > 0 else "🔴")
+        label  = f"{cor} Atualização das {res['hora']} — {n_ok} atualizados · {n_fail} com falha"
+        with st.expander(label, expanded=(n_fail > 0)):
+            col_ok, col_fail = st.columns(2)
+            with col_ok:
+                st.markdown("**✅ Atualizados com sucesso**")
+                for item in res["ok"]:
+                    st.markdown(f"- {item}")
+            if res["fail"]:
+                with col_fail:
+                    st.markdown("**❌ Falhou (usando valor do snapshot)**")
+                    for item in res["fail"]:
+                        st.markdown(f"- {item}")
 
     # KPIs
     c1, c2, c3, c4, c5 = st.columns(5)
