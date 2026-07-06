@@ -190,12 +190,12 @@ def fetch_usd_brl() -> float:
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_precos_br(tickers_br: tuple) -> dict:
-    """Retorna preços de ativos BR via BRAPI."""
+    """Retorna preços de ativos BR via BRAPI, com fallback para yfinance (.SA)."""
     prices = {}
     if not tickers_br:
         return prices
+    # Tentativa 1: BRAPI
     try:
-        tks = [t + ".SA" if not t.endswith(".SA") else t for t in tickers_br]
         url = f"https://brapi.dev/api/quote/{','.join(tickers_br)}?token={BRAPI_TOKEN}"
         resp = requests.get(url, timeout=15)
         if resp.ok:
@@ -206,6 +206,29 @@ def fetch_precos_br(tickers_br: tuple) -> dict:
                     prices[item["symbol"]] = item["regularMarketPrice"]
     except Exception:
         pass
+    # Fallback: yfinance para os que não vieram do BRAPI
+    missing = [t for t in tickers_br
+               if t not in prices and t.replace(".SA", "") not in prices]
+    if missing:
+        try:
+            tks_sa  = [t + ".SA" if not t.endswith(".SA") else t for t in missing]
+            tks_str = " ".join(tks_sa)
+            data_yf = yf.download(tks_str, period="2d", auto_adjust=True, progress=False)
+            if not data_yf.empty:
+                close = (data_yf["Close"] if "Close" in data_yf.columns
+                         else data_yf.xs("Close", axis=1, level=0))
+                if hasattr(close, "columns"):
+                    for tk, tk_sa in zip(missing, tks_sa):
+                        if tk_sa in close.columns:
+                            v = close[tk_sa].dropna()
+                            if not v.empty:
+                                prices[tk] = float(v.iloc[-1])
+                else:
+                    v = close.dropna()
+                    if not v.empty and len(missing) == 1:
+                        prices[missing[0]] = float(v.iloc[-1])
+        except Exception:
+            pass
     return prices
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -298,23 +321,50 @@ def tab_resumo(snap_rv, snap_rf, posicoes_rv):
                     tickers_us_up = posicoes_rv[posicoes_rv["moeda"] == "USD"]["ticker"].tolist()
 
                 if tickers_br_up:
+                    found_br = {}
+                    # Tentativa 1: BRAPI
                     try:
-                        url = f"https://brapi.dev/api/quote/{','.join(tickers_br_up)}?token={BRAPI_TOKEN}"
+                        url  = f"https://brapi.dev/api/quote/{','.join(tickers_br_up)}?token={BRAPI_TOKEN}"
                         resp = requests.get(url, timeout=15)
-                        found = {}
                         if resp.ok:
                             for item in resp.json().get("results", []):
                                 if item and item.get("regularMarketPrice"):
                                     sym = item["symbol"].replace(".SA", "")
-                                    found[sym] = item["regularMarketPrice"]
-                        for tk in tickers_br_up:
-                            tk_c = tk.replace(".SA", "")
-                            if tk_c in found:
-                                ok_list.append(f"{tk_c} → R$ {found[tk_c]:.2f}")
-                            else:
-                                fail_list.append(tk_c)
+                                    found_br[sym] = (item["regularMarketPrice"], "BRAPI")
                     except Exception:
-                        fail_list.extend([t.replace(".SA", "") for t in tickers_br_up])
+                        pass
+                    # Fallback: yfinance para os que não vieram do BRAPI
+                    missing_br = [t for t in tickers_br_up
+                                  if t.replace(".SA", "") not in found_br]
+                    if missing_br:
+                        try:
+                            tks_sa  = [t + ".SA" if not t.endswith(".SA") else t for t in missing_br]
+                            data_yf = yf.download(" ".join(tks_sa), period="2d",
+                                                   auto_adjust=True, progress=False)
+                            if not data_yf.empty:
+                                close = (data_yf["Close"] if "Close" in data_yf.columns
+                                         else data_yf.xs("Close", axis=1, level=0))
+                                if hasattr(close, "columns"):
+                                    for tk, tk_sa in zip(missing_br, tks_sa):
+                                        if tk_sa in close.columns:
+                                            v = close[tk_sa].dropna()
+                                            if not v.empty:
+                                                found_br[tk.replace(".SA","")] = (float(v.iloc[-1]), "yfinance")
+                                else:
+                                    v = close.dropna()
+                                    if not v.empty and len(missing_br) == 1:
+                                        tk = missing_br[0].replace(".SA","")
+                                        found_br[tk] = (float(v.iloc[-1]), "yfinance")
+                        except Exception:
+                            pass
+                    for tk in tickers_br_up:
+                        tk_c = tk.replace(".SA", "")
+                        if tk_c in found_br:
+                            preco, fonte = found_br[tk_c]
+                            fonte_str = f" ({fonte})" if fonte != "BRAPI" else ""
+                            ok_list.append(f"{tk_c} → R$ {preco:.2f}{fonte_str}")
+                        else:
+                            fail_list.append(tk_c)
 
                 # — Tickers US —
                 if tickers_us_up:
