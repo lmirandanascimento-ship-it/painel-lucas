@@ -752,8 +752,37 @@ def tab_evolucao(historico: pd.DataFrame):
 
 # ─── TAB: EMPRÉSTIMOS ─────────────────────────────────────────────────────────
 def tab_emprestimos(emp: pd.DataFrame):
+    # ── Formulário de novo empréstimo (visível mesmo sem dados) ───────────────
+    def _form_novo():
+        with st.expander("➕ Cadastrar Novo Empréstimo", expanded=emp.empty):
+            c1, c2 = st.columns(2)
+            novo_credor  = c1.text_input("Credor", key="ne_credor")
+            novo_titulo  = c2.text_input("Título / Descrição", key="ne_titulo")
+            novo_saldo_v = c1.number_input("Saldo devedor (R$)", min_value=0.0, step=1000.0, key="ne_saldo")
+            nova_taxa_v  = c2.number_input("Taxa a.m. (%)", min_value=0.0, max_value=100.0,
+                                           step=0.01, format="%.2f", key="ne_taxa")
+            nova_parcela = round(novo_saldo_v * nova_taxa_v / 100, 2)
+            st.caption(f"Juros/mês estimados: {brl(nova_parcela)}")
+            if st.button("💾 Cadastrar Empréstimo", key="btn_ne", use_container_width=True):
+                if not novo_credor or not novo_titulo or novo_saldo_v <= 0:
+                    st.warning("Preencha todos os campos obrigatórios.")
+                else:
+                    try:
+                        sb.table("emprestimos").insert({
+                            "credor": novo_credor, "titulo": novo_titulo,
+                            "saldo_devedor": round(novo_saldo_v, 2),
+                            "taxa_juros": round(nova_taxa_v / 100, 6),
+                            "parcela_juros": nova_parcela, "status": "ativo",
+                        }).execute()
+                        st.success("Empréstimo cadastrado!")
+                        load_emprestimos.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar: {e}")
+
     if emp.empty:
         st.info("Nenhum empréstimo ativo cadastrado.")
+        _form_novo()
         return
 
     total_divida = float(emp["saldo_devedor"].sum())
@@ -769,15 +798,13 @@ def tab_emprestimos(emp: pd.DataFrame):
         <div class='kpi-label'>🔴 Juros Mensais</div>
         <div class='kpi-sub'>Custo mensal total em juros</div>
     </div>""", unsafe_allow_html=True)
-    n_contratos = len(emp)
     c3.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-value'>{n_contratos}</div>
+        <div class='kpi-value'>{len(emp)}</div>
         <div class='kpi-label'>📋 Contratos Ativos</div>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Pizza por credor
     grp = emp.groupby("credor")["saldo_devedor"].sum().reset_index()
     col_g, col_t = st.columns([1, 1.8])
     with col_g:
@@ -789,7 +816,6 @@ def tab_emprestimos(emp: pd.DataFrame):
         fig.update_layout(height=260, margin=dict(l=0,r=0,t=0,b=0),
                           showlegend=False, paper_bgcolor="#FFFBEF")
         st.plotly_chart(fig, use_container_width=True)
-
     with col_t:
         df_show = emp[["credor","titulo","saldo_devedor","taxa_juros","parcela_juros"]].copy()
         df_show.columns = ["Credor","Título","Saldo Devedor","Taxa a.m.","Juros/Mês"]
@@ -798,51 +824,187 @@ def tab_emprestimos(emp: pd.DataFrame):
         df_show["Juros/Mês"]     = df_show["Juros/Mês"].apply(brl)
         st.dataframe(df_show, use_container_width=True, hide_index=True)
 
-    # Totalizador por credor
-    st.markdown("**Resumo por credor:**")
-    resumo = emp.groupby("credor").agg(
-        Contratos=("titulo","count"),
-        Saldo_Total=("saldo_devedor","sum"),
-        Juros_Mes=("parcela_juros","sum"),
-    ).reset_index()
-    resumo.columns = ["Credor","Contratos","Saldo Total","Juros/Mês"]
-    resumo["Saldo Total"] = resumo["Saldo Total"].apply(brl)
-    resumo["Juros/Mês"]  = resumo["Juros/Mês"].apply(brl)
-    st.dataframe(resumo, use_container_width=True, hide_index=True)
+    st.markdown("---")
+
+    # ── Registrar Pagamento ───────────────────────────────────────────────────
+    with st.expander("💸 Registrar Pagamento"):
+        contratos   = emp["titulo"].tolist()
+        sel_c       = st.selectbox("Contrato", contratos, key="pag_sel")
+        row_c       = emp[emp["titulo"] == sel_c].iloc[0]
+        saldo_at    = float(row_c["saldo_devedor"])
+        juros_mes_v = float(row_c["parcela_juros"])
+        st.caption(f"Saldo atual: **{brl(saldo_at)}** | Juros do mês: **{brl(juros_mes_v)}**")
+
+        col_vp, col_dp = st.columns(2)
+        valor_pago_v = col_vp.number_input("Valor pago (R$)", min_value=0.0,
+                                            value=float(juros_mes_v), step=100.0, key="pag_val")
+        data_pag_v   = col_dp.date_input("Data do pagamento",
+                                          value=datetime.now().date(), key="pag_data")
+        obs_v        = st.text_input("Observação (opcional)", key="pag_obs")
+
+        juros_no_pag = min(valor_pago_v, juros_mes_v)
+        amort_v      = max(0.0, valor_pago_v - juros_no_pag)
+        novo_saldo_v = max(0.0, saldo_at - amort_v)
+        st.caption(f"↳ Juros: **{brl(juros_no_pag)}** | Amortização: **{brl(amort_v)}** | Novo saldo: **{brl(novo_saldo_v)}**")
+
+        if st.button("✅ Confirmar Pagamento", key="btn_pag", use_container_width=True, type="primary"):
+            try:
+                emp_id = int(row_c["id"])
+                # Histórico (coluna opcional — ignora se não existir)
+                try:
+                    res_h  = sb.table("emprestimos").select("historico_pagamentos").eq("id", emp_id).execute()
+                    hist_v = (res_h.data[0].get("historico_pagamentos") or []) if res_h.data else []
+                    hist_v.append({
+                        "data": str(data_pag_v), "valor_pago": round(valor_pago_v, 2),
+                        "juros": round(juros_no_pag, 2), "amortizacao": round(amort_v, 2),
+                        "saldo_antes": round(saldo_at, 2), "saldo_depois": round(novo_saldo_v, 2),
+                        "obs": obs_v,
+                    })
+                    upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                           "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2),
+                           "historico_pagamentos": hist_v}
+                except Exception:
+                    upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                           "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2)}
+                if novo_saldo_v == 0:
+                    upd["status"] = "quitado"
+                sb.table("emprestimos").update(upd).eq("id", emp_id).execute()
+                st.success(f"Pagamento registrado! Novo saldo: **{brl(novo_saldo_v)}**"
+                           + (" — Contrato quitado! 🎉" if novo_saldo_v == 0 else ""))
+                load_emprestimos.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao registrar pagamento: {e}")
+
+    # ── Marcar como Quitado ───────────────────────────────────────────────────
+    with st.expander("✅ Marcar Contrato como Quitado"):
+        sel_q = st.selectbox("Contrato a quitar", emp["titulo"].tolist(), key="quit_sel")
+        row_q = emp[emp["titulo"] == sel_q].iloc[0]
+        st.caption(f"Saldo a ser baixado: **{brl(float(row_q['saldo_devedor']))}**")
+        st.warning("Essa ação marca o contrato como quitado e zera o saldo. Use para liquidações totais.")
+        if st.button("🏁 Confirmar Quitação", key="btn_quit", use_container_width=True):
+            try:
+                sb.table("emprestimos").update(
+                    {"status": "quitado", "saldo_devedor": 0.0, "parcela_juros": 0.0}
+                ).eq("id", int(row_q["id"])).execute()
+                st.success(f"Contrato '{sel_q}' quitado com sucesso! 🎉")
+                load_emprestimos.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
+    # ── Novo Empréstimo ───────────────────────────────────────────────────────
+    _form_novo()
+
+    # ── Histórico de Pagamentos ───────────────────────────────────────────────
+    with st.expander("📜 Histórico de Pagamentos"):
+        try:
+            todos_emp = sb.table("emprestimos").select(
+                "titulo,credor,historico_pagamentos"
+            ).execute()
+            tem_hist = False
+            for r_h in (todos_emp.data or []):
+                hist_rows = r_h.get("historico_pagamentos") or []
+                if not hist_rows:
+                    continue
+                tem_hist = True
+                st.markdown(f"**{r_h['titulo']}** — {r_h['credor']}")
+                df_h = pd.DataFrame(hist_rows)
+                rename_map = {
+                    "data": "Data", "valor_pago": "Valor Pago",
+                    "juros": "Juros", "amortizacao": "Amortização",
+                    "saldo_antes": "Saldo Antes", "saldo_depois": "Saldo Depois", "obs": "Obs",
+                }
+                df_h = df_h.rename(columns=rename_map)
+                for col_m in ["Valor Pago","Juros","Amortização","Saldo Antes","Saldo Depois"]:
+                    if col_m in df_h.columns:
+                        df_h[col_m] = df_h[col_m].apply(brl)
+                if "Data" in df_h.columns:
+                    df_h = df_h.sort_values("Data", ascending=False)
+                st.dataframe(df_h, use_container_width=True, hide_index=True)
+            if not tem_hist:
+                st.info("Nenhum pagamento registrado via sistema ainda.")
+                st.caption("💡 Para ativar o histórico completo, rode no Supabase SQL Editor: "
+                           "`ALTER TABLE emprestimos ADD COLUMN IF NOT EXISTS "
+                           "historico_pagamentos JSONB DEFAULT '[]';`")
+        except Exception:
+            st.info("Histórico não disponível.")
+            st.caption("💡 Para ativar: `ALTER TABLE emprestimos ADD COLUMN IF NOT EXISTS "
+                       "historico_pagamentos JSONB DEFAULT '[]';`")
 
 
 # ─── TAB: INVESTIMENTOS ESCRITÓRIO ────────────────────────────────────────────
 def tab_escritorio(inv: pd.DataFrame):
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    def _form_novo_mes():
+        with st.expander("➕ Lançar Novo Mês"):
+            inv_plot2 = inv[inv["saldo_final"] > 0] if not inv.empty else inv
+            ultimo_saldo = float(inv_plot2.iloc[-1]["saldo_final"]) if not inv_plot2.empty else 0.0
+            c1m, c2m = st.columns(2)
+            mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
+            tipo_v  = c2m.selectbox("Tipo", ["Aporte Mensal","Retirada","Ajuste","Outro"], key="em_tipo")
+            valor_v = c1m.number_input("Valor (R$)", min_value=0.0, step=500.0, key="em_valor")
+            rend_v  = c2m.number_input("Rendimento do mês (R$)", min_value=0.0, step=10.0, key="em_rend")
+            saldo_calc = ultimo_saldo + valor_v + rend_v
+            st.caption(f"Saldo calculado: **{brl(saldo_calc)}** (último: {brl(ultimo_saldo)} + aporte: {brl(valor_v)} + rend: {brl(rend_v)})")
+            saldo_manual = st.number_input("Saldo final (confirmado)", value=saldo_calc,
+                                           step=100.0, key="em_saldo_final")
+            if st.button("💾 Salvar Lançamento", key="btn_em", use_container_width=True, type="primary"):
+                try:
+                    mes_str = mes_v.strftime("%Y-%m-01")
+                    sb.table("investimentos_escritorio").upsert({
+                        "mes": mes_str, "tipo": tipo_v,
+                        "valor": round(valor_v, 2),
+                        "rendimento": round(rend_v, 2),
+                        "saldo_final": round(saldo_manual, 2),
+                    }, on_conflict="mes").execute()
+                    st.success("Lançamento salvo!")
+                    load_investimentos.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro: {e}")
+
     if inv.empty:
         st.info("Nenhum dado de investimento cadastrado.")
+        _form_novo_mes()
         return
 
-    ultimo = inv.iloc[-1]
-    saldo  = float(ultimo["saldo_final"])
-    rend   = float(ultimo["rendimento"])
+    inv_plot = inv[inv["saldo_final"] > 0].copy()
+    ultimo   = inv_plot.iloc[-1]
+    primeiro = inv_plot.iloc[0]
+    saldo_v  = float(ultimo["saldo_final"])
+    rend_v   = float(ultimo["rendimento"])
+    saldo_ini = float(primeiro["saldo_final"])
+    rentab_total = (saldo_v / saldo_ini - 1) * 100 if saldo_ini else 0
+    total_aporte = float(inv[inv["tipo"] != "Saldo Inicial"]["valor"].sum())
+    total_rend   = float(inv["rendimento"].sum())
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-value'>{brl(saldo)}</div>
+        <div class='kpi-value'>{brl(saldo_v)}</div>
         <div class='kpi-label'>📈 Saldo Atual</div>
     </div>""", unsafe_allow_html=True)
     c2.markdown(f"""<div class='kpi-card ouro'>
-        <div class='kpi-value'>{brl(rend)}</div>
+        <div class='kpi-value'>{brl(rend_v)}</div>
         <div class='kpi-label'>💰 Rendimento Último Mês</div>
     </div>""", unsafe_allow_html=True)
-    total_aporte = float(inv[inv["tipo"] != "Saldo Inicial"]["valor"].sum())
     c3.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-value'>{brl(total_aporte)}</div>
-        <div class='kpi-label'>📥 Total de Aportes</div>
+        <div class='kpi-value'>{brl(total_rend)}</div>
+        <div class='kpi-label'>💵 Rendimento Acumulado</div>
+    </div>""", unsafe_allow_html=True)
+    cls_r = "" if rentab_total >= 0 else "neg"
+    c4.markdown(f"""<div class='kpi-card {cls_r}'>
+        <div class='kpi-value'>{pct(rentab_total)}</div>
+        <div class='kpi-label'>📊 Rentabilidade Total</div>
+        <div class='kpi-sub'>Desde {primeiro["mes"].strftime("%b/%Y")}</div>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     fig = go.Figure()
-    inv_plot = inv[inv["saldo_final"] > 0].copy()
     fig.add_trace(go.Bar(
-        x=inv_plot["mes"].dt.strftime("%b/%Y"), y=inv_plot["valor"],
-        name="Aporte", marker_color=OURO, opacity=0.7,
+        x=inv_plot["mes"].dt.strftime("%b/%Y"), y=inv_plot["rendimento"],
+        name="Rendimento", marker_color=OURO, opacity=0.8,
     ))
     fig.add_trace(go.Scatter(
         x=inv_plot["mes"].dt.strftime("%b/%Y"), y=inv_plot["saldo_final"],
@@ -860,11 +1022,90 @@ def tab_escritorio(inv: pd.DataFrame):
 
     df_show = inv_plot[["mes","tipo","valor","rendimento","saldo_final"]].copy()
     df_show.columns = ["Mês","Tipo","Aporte","Rendimento","Saldo Final"]
-    df_show["Mês"]       = df_show["Mês"].dt.strftime("%b/%Y")
-    df_show["Aporte"]    = df_show["Aporte"].apply(brl)
-    df_show["Rendimento"]= df_show["Rendimento"].apply(brl)
+    df_show["Mês"]        = df_show["Mês"].dt.strftime("%b/%Y")
+    df_show["Aporte"]     = df_show["Aporte"].apply(brl)
+    df_show["Rendimento"] = df_show["Rendimento"].apply(brl)
     df_show["Saldo Final"]= df_show["Saldo Final"].apply(brl)
     st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # ── Lançar novo mês ───────────────────────────────────────────────────────
+    _form_novo_mes()
+
+    # ── Editar lançamento existente ───────────────────────────────────────────
+    with st.expander("✏️ Editar Lançamento Existente"):
+        meses_disp = inv_plot["mes"].dt.strftime("%b/%Y").tolist()
+        mes_sel    = st.selectbox("Mês", meses_disp[::-1], key="ed_mes")
+        row_ed     = inv_plot[inv_plot["mes"].dt.strftime("%b/%Y") == mes_sel].iloc[0]
+        c1e, c2e   = st.columns(2)
+        ed_valor   = c1e.number_input("Aporte (R$)", value=float(row_ed["valor"]), step=100.0, key="ed_val")
+        ed_rend    = c2e.number_input("Rendimento (R$)", value=float(row_ed["rendimento"]), step=10.0, key="ed_rend")
+        ed_saldo   = st.number_input("Saldo Final (R$)", value=float(row_ed["saldo_final"]), step=100.0, key="ed_saldo")
+        if st.button("💾 Salvar Edição", key="btn_ed", use_container_width=True):
+            try:
+                mes_str = row_ed["mes"].strftime("%Y-%m-01")
+                sb.table("investimentos_escritorio").update({
+                    "valor": round(ed_valor, 2),
+                    "rendimento": round(ed_rend, 2),
+                    "saldo_final": round(ed_saldo, 2),
+                }).eq("mes", mes_str).execute()
+                st.success("Lançamento atualizado!")
+                load_investimentos.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
+    # ── Projeção Futura ───────────────────────────────────────────────────────
+    with st.expander("📈 Projeção Futura"):
+        n_meses_hist = len(inv_plot)
+        rend_medio   = (total_rend / n_meses_hist) if n_meses_hist else 0
+        taxa_media   = (rend_medio / saldo_v * 100) if saldo_v else 0
+
+        st.caption(f"Rendimento médio histórico: **{brl(rend_medio)}/mês** ({taxa_media:.2f}% a.m.)")
+        cp1, cp2, cp3 = st.columns(3)
+        meses_proj  = cp1.slider("Meses a projetar", 1, 60, 12, key="proj_meses")
+        aporte_proj = cp2.number_input("Aporte mensal (R$)", min_value=0.0,
+                                        value=float(total_aporte / n_meses_hist) if n_meses_hist else 0.0,
+                                        step=100.0, key="proj_aporte")
+        taxa_proj   = cp3.number_input("Taxa mensal (%)", min_value=0.0, max_value=10.0,
+                                        value=round(taxa_media, 2), step=0.01,
+                                        format="%.2f", key="proj_taxa") / 100
+
+        # Calcular projeção
+        saldo_p = saldo_v
+        proj_rows = []
+        from datetime import date
+        mes_base = ultimo["mes"]
+        for i in range(1, meses_proj + 1):
+            rend_p  = saldo_p * taxa_proj
+            saldo_p = saldo_p + aporte_proj + rend_p
+            mes_p   = pd.Timestamp(mes_base) + pd.DateOffset(months=i)
+            proj_rows.append({"Mês": mes_p.strftime("%b/%Y"),
+                               "Aporte": brl(aporte_proj),
+                               "Rendimento Est.": brl(rend_p),
+                               "Saldo Projetado": brl(saldo_p)})
+
+        if proj_rows:
+            df_proj = pd.DataFrame(proj_rows)
+            saldo_final_proj = saldo_p
+            st.markdown(f"**Saldo projetado em {meses_proj} meses: {brl(saldo_final_proj)}**"
+                        f"  ↑ {pct((saldo_final_proj/saldo_v - 1)*100)} vs hoje")
+
+            fig_p = go.Figure(go.Scatter(
+                x=df_proj["Mês"], y=[float(r["Saldo Projetado"].replace("R$ ","")
+                    .replace(".","").replace(",",".")) for r in proj_rows],
+                mode="lines+markers", line=dict(color=VERDE, width=2, dash="dot"),
+                marker=dict(size=6), fill="tozeroy", fillcolor="rgba(26,71,49,0.08)",
+            ))
+            fig_p.update_layout(
+                height=220, margin=dict(l=0,r=0,t=10,b=0),
+                paper_bgcolor="#FFFBEF", plot_bgcolor="#FFFBEF",
+                yaxis=dict(tickprefix="R$ ", gridcolor="#EDE8D5"),
+                xaxis=dict(gridcolor="#EDE8D5"),
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+            st.dataframe(df_proj, use_container_width=True, hide_index=True)
 
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
