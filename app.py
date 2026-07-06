@@ -798,12 +798,10 @@ def tab_evolucao(historico: pd.DataFrame):
     st.dataframe(df_hist_show, use_container_width=True, hide_index=True)
 
 
-# ─── FRAGMENT: conteúdo por devedor (evita rerun global ao interagir) ──────────
-@st.fragment
+
+# ─── helper: conteúdo por devedor ──────────────────────────────────────────────
 def _conteudo_devedor(dev_id: int, dev_nome: str):
-    """Renderiza KPIs, tabelas, formulário e histórico de um devedor.
-    Decorated com @st.fragment: reruns internos não afetam as abas externas."""
-    # Carrega dados frescos dentro do fragment
+    """KPIs, tabelas, formulário e histórico de um devedor."""
     emp_conc_df = load_emprestimos_concedidos()
     pagtos_all  = load_pagamentos_recebidos()
 
@@ -811,34 +809,27 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
     ativos_d = emp_dev[emp_dev["status"] == "ativo"]  if not emp_dev.empty else pd.DataFrame()
     if not ativos_d.empty:
         ativos_d = ativos_d.sort_values("data_emprestimo").reset_index(drop=True)
-    quit_d   = emp_dev[emp_dev["status"] == "quitado"] if not emp_dev.empty else pd.DataFrame()
+    quit_d = emp_dev[emp_dev["status"] == "quitado"] if not emp_dev.empty else pd.DataFrame()
 
-    pagtos_d = pagtos_all.copy()
-    if not pagtos_d.empty and not emp_dev.empty:
-        pagtos_d = pagtos_d[pagtos_d["emprestimo_id"].isin(emp_dev["id"].tolist())]
+    pagtos_d = pagtos_all[pagtos_all["emprestimo_id"].isin(emp_dev["id"].tolist())] \
+               if not pagtos_all.empty and not emp_dev.empty else pd.DataFrame()
 
     # ── KPIs ──────────────────────────────────────────────────────────────────
-    saldo_d = float(ativos_d["saldo_devedor"].sum())  if not ativos_d.empty else 0.0
-    juros_d = float(ativos_d["parcela_juros"].sum())  if not ativos_d.empty else 0.0
-    receb_d = float(pagtos_d["valor_pago"].sum())     if not pagtos_d.empty else 0.0
+    saldo_d = float(ativos_d["saldo_devedor"].sum()) if not ativos_d.empty else 0.0
+    juros_d = float(ativos_d["parcela_juros"].sum()) if not ativos_d.empty else 0.0
+    receb_d = float(pagtos_d["valor_pago"].sum())    if not pagtos_d.empty else 0.0
 
     ka, kb, kc = st.columns(3)
-    ka.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-value'>{brl(saldo_d)}</div>
-        <div class='kpi-label'>💰 Saldo Devedor</div>
-    </div>""", unsafe_allow_html=True)
-    kb.markdown(f"""<div class='kpi-card ouro'>
-        <div class='kpi-value'>{brl(juros_d)}</div>
-        <div class='kpi-label'>📅 Juros/Mês</div>
-    </div>""", unsafe_allow_html=True)
-    kc.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-value'>{brl(receb_d)}</div>
-        <div class='kpi-label'>✅ Total Recebido</div>
-    </div>""", unsafe_allow_html=True)
+    ka.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(saldo_d)}</div>
+        <div class='kpi-label'>💰 Saldo Devedor</div></div>""", unsafe_allow_html=True)
+    kb.markdown(f"""<div class='kpi-card ouro'><div class='kpi-value'>{brl(juros_d)}</div>
+        <div class='kpi-label'>📅 Juros/Mês</div></div>""", unsafe_allow_html=True)
+    kc.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(receb_d)}</div>
+        <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Tabela de contratos ativos ─────────────────────────────────────────────
+    # ── Contratos ativos ───────────────────────────────────────────────────────
     if not ativos_d.empty:
         st.markdown("**Contratos Ativos**")
         df_at = ativos_d[["titulo","data_emprestimo","valor_original",
@@ -848,10 +839,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
         df_at["Valor Orig."] = df_at["Valor Orig."].apply(brl)
         df_at["Saldo"]       = df_at["Saldo"].apply(brl)
         df_at["Juros/Mês"]   = df_at["Juros/Mês"].apply(brl)
-        df_at["Dia Venc."]   = df_at["Dia Venc."].apply(lambda x: f"Dia {int(x)}" if pd.notna(x) else "—")
+        df_at["Dia Venc."]   = df_at["Dia Venc."].apply(
+            lambda x: f"Dia {int(x)}" if pd.notna(x) else "—")
         st.dataframe(df_at, use_container_width=True, hide_index=True)
 
-    # ── Quitados com data de quitação ─────────────────────────────────────────
+    # ── Quitados ───────────────────────────────────────────────────────────────
     if not quit_d.empty:
         with st.expander(f"✅ Quitados ({len(quit_d)})"):
             datas_quit = {}
@@ -862,8 +854,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         datas_quit[int(qrow["id"])] = pq["data_pagamento"].max()
             df_qt = quit_d[["id","titulo","valor_original","data_emprestimo"]].copy()
             df_qt["Data Quit."] = df_qt["id"].map(
-                lambda x: datas_quit[x].strftime("%d/%m/%Y") if x in datas_quit else "—"
-            )
+                lambda x: datas_quit[x].strftime("%d/%m/%Y") if x in datas_quit else "—")
             df_qt = df_qt[["titulo","valor_original","data_emprestimo","Data Quit."]]
             df_qt.columns = ["Título","Valor Original","Data Emp.","Data Quit."]
             df_qt["Valor Original"] = df_qt["Valor Original"].apply(brl)
@@ -872,40 +863,38 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
     st.markdown("---")
 
-    # ── Registrar Pagamento Recebido ───────────────────────────────────────────
+    # ── Registrar Pagamento — usa st.form para não disparar rerun a cada campo ─
     with st.expander("💸 Registrar Pagamento Recebido"):
         if ativos_d.empty:
             st.info("Nenhum contrato ativo para este devedor.")
         else:
+            # Seletor de contrato FORA do form (atualiza preview sem enviar)
             contratos_opts = ativos_d["titulo"].tolist()
             sel_pag = st.selectbox("Contrato", contratos_opts, key=f"pag_sel_{dev_id}")
             row_pag  = ativos_d[ativos_d["titulo"] == sel_pag].iloc[0]
             saldo_p  = float(row_pag["saldo_devedor"])
             juros_p  = float(row_pag["parcela_juros"])
             emp_id_p = int(row_pag["id"])
+            taxa_p   = float(row_pag["taxa_juros"])
+            st.caption(f"Saldo atual: **{brl(saldo_p)}** · Juros do mês: **{brl(juros_p)}**")
 
-            st.caption(f"Saldo: **{brl(saldo_p)}** | Juros do mês: **{brl(juros_p)}**")
-            cp1, cp2 = st.columns(2)
-            valor_p = cp1.number_input("Valor recebido (R$)", min_value=0.0,
-                                        value=float(juros_p), step=100.0,
-                                        key=f"pag_val_{dev_id}")
-            data_p  = cp2.date_input("Data do recebimento",
-                                      value=datetime.now().date(),
-                                      format="DD/MM/YYYY",
-                                      key=f"pag_data_{dev_id}")
-            obs_p   = st.text_input("Observação", key=f"pag_obs_{dev_id}")
+            # Form: alterações nos campos NÃO disparam rerun global
+            with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
+                fp1, fp2 = st.columns(2)
+                valor_p = fp1.number_input("Valor recebido (R$)", min_value=0.01,
+                                            value=round(juros_p, 2), step=100.0)
+                data_p  = fp2.date_input("Data do recebimento",
+                                          value=datetime.now().date(),
+                                          format="DD/MM/YYYY")
+                obs_p   = st.text_input("Observação (opcional)")
+                submitted_pag = st.form_submit_button(
+                    "✅ Confirmar Recebimento", type="primary", use_container_width=True)
 
-            juros_rec    = min(valor_p, juros_p)
-            amort_p      = max(0.0, valor_p - juros_rec)
-            novo_saldo_p = max(0.0, saldo_p - amort_p)
-            novo_juros_p = round(novo_saldo_p * float(row_pag["taxa_juros"]), 2)
-            st.caption(
-                f"↳ Juros: **{brl(juros_rec)}** | Amortização: **{brl(amort_p)}** "
-                f"| Novo saldo: **{brl(novo_saldo_p)}**"
-            )
-
-            if st.button("✅ Confirmar Recebimento", type="primary",
-                         key=f"btn_pag_{dev_id}", use_container_width=True):
+            if submitted_pag:
+                juros_rec    = min(valor_p, juros_p)
+                amort_p      = max(0.0, valor_p - juros_rec)
+                novo_saldo_p = max(0.0, saldo_p - amort_p)
+                novo_juros_p = round(novo_saldo_p * taxa_p, 2)
                 try:
                     sb.table("pagamentos_recebidos").insert({
                         "emprestimo_id":  emp_id_p,
@@ -922,74 +911,69 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     if novo_saldo_p == 0:
                         upd_p["status"] = "quitado"
                     sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
-                    st.success(
-                        f"Recebimento registrado! Novo saldo: **{brl(novo_saldo_p)}**"
-                        + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
-                    )
                     load_emprestimos_concedidos.clear()
                     load_pagamentos_recebidos.clear()
-                    st.rerun(scope="fragment")   # ← só re-executa este fragment
+                    st.success(
+                        f"Recebimento registrado! "
+                        f"Juros: **{brl(juros_rec)}** · Amort.: **{brl(amort_p)}** · "
+                        f"Novo saldo: **{brl(novo_saldo_p)}**"
+                        + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
+                    )
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro ao registrar: {e}")
 
     # ── Histórico por contrato ─────────────────────────────────────────────────
     with st.expander("📜 Histórico de Pagamentos por Contrato"):
         if pagtos_d.empty:
             st.info("Nenhum pagamento registrado ainda.")
         else:
-            todos_emp_dev = pd.concat([ativos_d, quit_d], ignore_index=True) if not quit_d.empty else ativos_d.copy()
-            if todos_emp_dev.empty:
-                st.info("Nenhum contrato encontrado.")
-            else:
-                for _, row_c in todos_emp_dev.sort_values("data_emprestimo").iterrows():
-                    emp_id_c = int(row_c["id"])
-                    titulo_c = row_c["titulo"]
-                    status_c = row_c["status"]
-                    pagtos_c = pagtos_d[pagtos_d["emprestimo_id"] == emp_id_c].copy()
-                    if pagtos_c.empty:
-                        continue
-                    pagtos_c = pagtos_c.sort_values("data_pagamento")
-                    badge    = "✅" if status_c == "quitado" else "📋"
-                    total_c  = float(pagtos_c["valor_pago"].sum())
-                    st.markdown(
-                        f"**{badge} {titulo_c}** &nbsp;·&nbsp; "
-                        f"{len(pagtos_c)} pagamentos &nbsp;·&nbsp; "
-                        f"Total: **{brl(total_c)}**"
-                    )
-                    df_pc = pagtos_c[["data_pagamento","valor_pago","juros",
-                                       "amortizacao","saldo_depois","observacao"]].copy()
-                    df_pc.columns = ["Data","Valor Pago","Juros","Amortização","Saldo Após","Obs"]
-                    df_pc["Data"]        = df_pc["Data"].dt.strftime("%d/%m/%Y")
-                    df_pc["Valor Pago"]  = df_pc["Valor Pago"].apply(brl)
-                    df_pc["Juros"]       = df_pc["Juros"].apply(brl)
-                    df_pc["Amortização"] = df_pc["Amortização"].apply(brl)
-                    df_pc["Saldo Após"]  = df_pc["Saldo Após"].apply(brl)
-                    st.dataframe(df_pc, use_container_width=True, hide_index=True)
-                    st.markdown("")
+            todos = pd.concat([ativos_d, quit_d], ignore_index=True) \
+                    if not quit_d.empty else ativos_d.copy()
+            for _, row_c in todos.sort_values("data_emprestimo").iterrows():
+                eid      = int(row_c["id"])
+                pagtos_c = pagtos_d[pagtos_d["emprestimo_id"] == eid].copy()
+                if pagtos_c.empty:
+                    continue
+                pagtos_c = pagtos_c.sort_values("data_pagamento")
+                badge    = "✅" if row_c["status"] == "quitado" else "📋"
+                st.markdown(
+                    f"**{badge} {row_c['titulo']}** &nbsp;·&nbsp; "
+                    f"{len(pagtos_c)} pagtos &nbsp;·&nbsp; "
+                    f"Total: **{brl(float(pagtos_c['valor_pago'].sum()))}**"
+                )
+                df_pc = pagtos_c[["data_pagamento","valor_pago","juros",
+                                   "amortizacao","saldo_depois","observacao"]].copy()
+                df_pc.columns = ["Data","Valor Pago","Juros","Amortização","Saldo Após","Obs"]
+                df_pc["Data"]        = df_pc["Data"].dt.strftime("%d/%m/%Y")
+                df_pc["Valor Pago"]  = df_pc["Valor Pago"].apply(brl)
+                df_pc["Juros"]       = df_pc["Juros"].apply(brl)
+                df_pc["Amortização"] = df_pc["Amortização"].apply(brl)
+                df_pc["Saldo Após"]  = df_pc["Saldo Após"].apply(brl)
+                st.dataframe(df_pc, use_container_width=True, hide_index=True)
+                st.markdown("")
 
-    # ── Novo empréstimo ────────────────────────────────────────────────────────
+    # ── Novo Empréstimo ────────────────────────────────────────────────────────
     with st.expander(f"➕ Novo Empréstimo para {dev_nome}"):
-        nc1, nc2 = st.columns(2)
-        new_titulo = nc1.text_input("Título", key=f"ne_tit_{dev_id}")
-        new_data   = nc2.date_input("Data do empréstimo",
-                                     value=datetime.now().date(),
-                                     format="DD/MM/YYYY",
-                                     key=f"ne_data_{dev_id}")
-        new_valor  = nc1.number_input("Valor (R$)", min_value=0.0,
-                                       step=1000.0, key=f"ne_val_{dev_id}")
-        new_taxa   = nc2.number_input("Taxa a.m. (%)", min_value=0.0,
-                                       max_value=10.0, step=0.01,
-                                       format="%.2f", key=f"ne_taxa_{dev_id}") / 100
-        new_dia    = nc1.number_input("Dia de vencimento", min_value=1,
-                                       max_value=31, step=1,
-                                       key=f"ne_dia_{dev_id}")
-        new_parcela = round(new_valor * new_taxa, 2)
-        st.caption(f"Juros/mês estimados: **{brl(new_parcela)}**")
-        if st.button("💾 Cadastrar Empréstimo", key=f"btn_ne_{dev_id}",
-                     use_container_width=True):
+        with st.form(key=f"form_ne_{dev_id}", clear_on_submit=True):
+            nc1, nc2 = st.columns(2)
+            new_titulo = nc1.text_input("Título")
+            new_data   = nc2.date_input("Data do empréstimo",
+                                         value=datetime.now().date(),
+                                         format="DD/MM/YYYY")
+            new_valor  = nc1.number_input("Valor (R$)", min_value=0.0, step=1000.0)
+            new_taxa_pct = nc2.number_input("Taxa a.m. (%)", min_value=0.0,
+                                             max_value=10.0, step=0.01, format="%.2f")
+            new_dia    = nc1.number_input("Dia de vencimento", min_value=1,
+                                           max_value=31, step=1, value=10)
+            submitted_ne = st.form_submit_button("💾 Cadastrar Empréstimo",
+                                                  use_container_width=True)
+        if submitted_ne:
             if not new_titulo or new_valor <= 0:
                 st.warning("Preencha título e valor.")
             else:
+                new_taxa    = new_taxa_pct / 100
+                new_parcela = round(new_valor * new_taxa, 2)
                 try:
                     sb.table("emprestimos_concedidos").insert({
                         "devedor_id":      dev_id,
@@ -1002,9 +986,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         "dia_vencimento":  int(new_dia),
                         "status":          "ativo",
                     }).execute()
-                    st.success("Empréstimo cadastrado!")
+                    st.success(f"Empréstimo '{new_titulo}' cadastrado · "
+                               f"Juros/mês: **{brl(new_parcela)}**")
                     load_emprestimos_concedidos.clear()
-                    st.rerun(scope="fragment")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
