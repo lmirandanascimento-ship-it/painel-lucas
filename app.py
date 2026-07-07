@@ -799,8 +799,13 @@ def tab_evolucao(historico: pd.DataFrame):
 
 
 # ─── helper: conteúdo por devedor ──────────────────────────────────────────────
-def _conteudo_devedor(dev_id: int, dev_nome: str):
+def _conteudo_devedor(dev_id: int, dev_nome: str, *, in_fragment: bool = False):
     """KPIs, tabelas, formulário e histórico de um devedor."""
+    def _do_rerun():
+        if in_fragment:
+            st.rerun(scope="fragment")
+        else:
+            st.rerun()
     emp_conc_df = load_emprestimos_concedidos()
     pagtos_all  = load_pagamentos_recebidos()
 
@@ -918,7 +923,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         f"Novo saldo: **{brl(novo_saldo_p)}**"
                         + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
                     )
-                    st.rerun()
+                    _do_rerun()
                 except Exception as e:
                     st.error(f"Erro ao registrar: {e}")
 
@@ -988,91 +993,96 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     st.success(f"Empréstimo '{new_titulo}' cadastrado · "
                                f"Juros/mês: **{brl(new_parcela)}**")
                     load_emprestimos_concedidos.clear()
-                    st.rerun()
+                    _do_rerun()
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
 
 # ─── TAB: EMPRÉSTIMOS ─────────────────────────────────────────────────────────
+@st.fragment
+def _sub1_emprestimos_concedidos():
+    """Fragment isolado — interações aqui não causam rerun da página inteira."""
+    devedores_df  = load_devedores()
+    emp_conc_df   = load_emprestimos_concedidos()
+    pagtos_all    = load_pagamentos_recebidos()
+
+    # ── KPIs globais ──────────────────────────────────────────────────────
+    ativos_glob  = emp_conc_df[emp_conc_df["status"] == "ativo"] if not emp_conc_df.empty else pd.DataFrame()
+    total_saldo  = float(ativos_glob["saldo_devedor"].sum()) if not ativos_glob.empty else 0.0
+    total_juros  = float(ativos_glob["parcela_juros"].sum()) if not ativos_glob.empty else 0.0
+    n_contratos  = len(ativos_glob)
+    total_receb  = float(pagtos_all["valor_pago"].sum())    if not pagtos_all.empty else 0.0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_saldo)}</div>
+        <div class='kpi-label'>💰 Total a Receber</div></div>""", unsafe_allow_html=True)
+    c2.markdown(f"""<div class='kpi-card ouro'><div class='kpi-value'>{brl(total_juros)}</div>
+        <div class='kpi-label'>📅 Juros Mensais</div></div>""", unsafe_allow_html=True)
+    c3.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{n_contratos}</div>
+        <div class='kpi-label'>📋 Contratos Ativos</div></div>""", unsafe_allow_html=True)
+    c4.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_receb)}</div>
+        <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if devedores_df.empty:
+        st.info("Nenhum devedor cadastrado ainda.")
+        with st.form("form_novo_devedor_first"):
+            nd_nome = st.text_input("Nome do devedor")
+            nd_cat  = st.text_input("Categoria (ex: Loja, Pessoa)")
+            if st.form_submit_button("💾 Cadastrar"):
+                if nd_nome:
+                    try:
+                        sb.table("devedores").insert({"nome": nd_nome, "categoria": nd_cat, "ativo": True}).execute()
+                        load_devedores.clear()
+                        st.success("Devedor cadastrado!")
+                        st.rerun(scope="fragment")
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
+    else:
+        # ── Seletor de devedor ────────────────────────────────────────────
+        nomes_dev = [row["nome"] for _, row in devedores_df.iterrows()]
+        opcoes    = nomes_dev + ["➕ Cadastrar Novo Devedor"]
+        sel_dev   = st.selectbox("Devedor", opcoes, key="sel_devedor_conc",
+                                 label_visibility="collapsed")
+
+        if sel_dev == "➕ Cadastrar Novo Devedor":
+            st.markdown("### Novo Devedor")
+            with st.form("form_novo_devedor"):
+                nd1, nd2 = st.columns(2)
+                nd_nome     = nd1.text_input("Nome")
+                nd_categoria= nd2.text_input("Categoria (ex: Loja, Pessoa)")
+                nd_contato  = st.text_input("Contato (opcional)")
+                if st.form_submit_button("💾 Cadastrar Devedor", use_container_width=True):
+                    if not nd_nome:
+                        st.warning("Informe o nome.")
+                    else:
+                        try:
+                            sb.table("devedores").insert({
+                                "nome": nd_nome, "categoria": nd_categoria,
+                                "contato": nd_contato, "ativo": True,
+                            }).execute()
+                            st.success(f"Devedor '{nd_nome}' cadastrado!")
+                            load_devedores.clear()
+                            st.rerun(scope="fragment")
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+        else:
+            dev_row  = devedores_df[devedores_df["nome"] == sel_dev].iloc[0]
+            dev_id   = int(dev_row["id"])
+            dev_nome = str(dev_row["nome"])
+            _conteudo_devedor(dev_id, dev_nome, in_fragment=True)
+
+
 def tab_emprestimos(emp: pd.DataFrame):
     """Aba principal de empréstimos: concedidos (créditos) + tomados (débitos)."""
     sub1, sub2 = st.tabs(["🏦 Empréstimos Concedidos", "💳 Meus Empréstimos"])
 
     # ══════════════════════════════════════════════════════════════════════════
-    # SUB-ABA 1: EMPRÉSTIMOS CONCEDIDOS (Lucas é o credor)
+    # SUB-ABA 1: EMPRÉSTIMOS CONCEDIDOS — chamado como fragment
     # ══════════════════════════════════════════════════════════════════════════
     with sub1:
-        devedores_df  = load_devedores()
-        emp_conc_df   = load_emprestimos_concedidos()
-        pagtos_all    = load_pagamentos_recebidos()
-
-        # ── KPIs globais ──────────────────────────────────────────────────────
-        ativos_glob  = emp_conc_df[emp_conc_df["status"] == "ativo"] if not emp_conc_df.empty else pd.DataFrame()
-        total_saldo  = float(ativos_glob["saldo_devedor"].sum()) if not ativos_glob.empty else 0.0
-        total_juros  = float(ativos_glob["parcela_juros"].sum()) if not ativos_glob.empty else 0.0
-        n_contratos  = len(ativos_glob)
-        total_receb  = float(pagtos_all["valor_pago"].sum())    if not pagtos_all.empty else 0.0
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_saldo)}</div>
-            <div class='kpi-label'>💰 Total a Receber</div></div>""", unsafe_allow_html=True)
-        c2.markdown(f"""<div class='kpi-card ouro'><div class='kpi-value'>{brl(total_juros)}</div>
-            <div class='kpi-label'>📅 Juros Mensais</div></div>""", unsafe_allow_html=True)
-        c3.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{n_contratos}</div>
-            <div class='kpi-label'>📋 Contratos Ativos</div></div>""", unsafe_allow_html=True)
-        c4.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_receb)}</div>
-            <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        if devedores_df.empty:
-            st.info("Nenhum devedor cadastrado ainda.")
-            with st.form("form_novo_devedor_first"):
-                nd_nome = st.text_input("Nome do devedor")
-                nd_cat  = st.text_input("Categoria (ex: Loja, Pessoa)")
-                if st.form_submit_button("💾 Cadastrar"):
-                    if nd_nome:
-                        try:
-                            sb.table("devedores").insert({"nome": nd_nome, "categoria": nd_cat, "ativo": True}).execute()
-                            load_devedores.clear()
-                            st.success("Devedor cadastrado!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro: {e}")
-        else:
-            # ── Seletor de devedor (selectbox em vez de tabs aninhadas) ───────
-            nomes_dev = [row["nome"] for _, row in devedores_df.iterrows()]
-            opcoes    = nomes_dev + ["➕ Cadastrar Novo Devedor"]
-            sel_dev   = st.selectbox("Devedor", opcoes, key="sel_devedor_conc",
-                                     label_visibility="collapsed")
-
-            if sel_dev == "➕ Cadastrar Novo Devedor":
-                st.markdown("### Novo Devedor")
-                with st.form("form_novo_devedor"):
-                    nd1, nd2 = st.columns(2)
-                    nd_nome     = nd1.text_input("Nome")
-                    nd_categoria= nd2.text_input("Categoria (ex: Loja, Pessoa)")
-                    nd_contato  = st.text_input("Contato (opcional)")
-                    if st.form_submit_button("💾 Cadastrar Devedor", use_container_width=True):
-                        if not nd_nome:
-                            st.warning("Informe o nome.")
-                        else:
-                            try:
-                                sb.table("devedores").insert({
-                                    "nome": nd_nome, "categoria": nd_categoria,
-                                    "contato": nd_contato, "ativo": True,
-                                }).execute()
-                                st.success(f"Devedor '{nd_nome}' cadastrado!")
-                                load_devedores.clear()
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro: {e}")
-            else:
-                dev_row  = devedores_df[devedores_df["nome"] == sel_dev].iloc[0]
-                dev_id   = int(dev_row["id"])
-                dev_nome = str(dev_row["nome"])
-                _conteudo_devedor(dev_id, dev_nome)
-
+        _sub1_emprestimos_concedidos()
 
     # ══════════════════════════════════════════════════════════════════════════
     # SUB-ABA 2: MEUS EMPRÉSTIMOS (Lucas é o devedor)
