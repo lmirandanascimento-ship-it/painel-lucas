@@ -67,7 +67,12 @@ sb = get_sb()
 # ─── Utilitários ──────────────────────────────────────────────────────────────
 def brl(v, sign=False):
     if v is None: return "—"
-    v = float(v)
+    try:
+        v = float(v)
+    except Exception:
+        return "—"
+    if v != v:  # NaN
+        return "—"
     s = f"{abs(v):,.2f}".replace(",","X").replace(".",",").replace("X",".")
     prefix = ("+" if v >= 0 else "-") if sign else ("-" if v < 0 else "")
     return f"R$ {prefix}{s}"
@@ -960,15 +965,75 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     f"{len(pagtos_c)} pagtos &nbsp;·&nbsp; "
                     f"Total: **{brl(float(pagtos_c['valor_pago'].sum()))}**"
                 )
-                df_pc = pagtos_c[["data_pagamento","valor_pago","juros",
-                                   "amortizacao","saldo_depois","observacao"]].copy()
-                df_pc.columns = ["Data","Valor Pago","Juros","Amortização","Saldo Após","Obs"]
-                df_pc["Data"]        = df_pc["Data"].dt.strftime("%d/%m/%Y")
-                df_pc["Valor Pago"]  = df_pc["Valor Pago"].apply(brl)
-                df_pc["Juros"]       = df_pc["Juros"].apply(brl)
-                df_pc["Amortização"] = df_pc["Amortização"].apply(brl)
-                df_pc["Saldo Após"]  = df_pc["Saldo Após"].apply(brl)
-                st.dataframe(df_pc, use_container_width=True, hide_index=True)
+
+                # ── Cabeçalho ──────────────────────────────────────────────
+                hd = st.columns([1.5, 1.5, 1.2, 1.5, 1.8, 2.5, 0.4, 0.4])
+                for col, label in zip(hd, ["Data","Valor Pago","Juros","Amortização","Saldo Após","Obs","","",]):
+                    col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
+                st.divider()
+
+                for _, pr in pagtos_c.iterrows():
+                    pag_id  = int(pr["id"])
+                    ed_key  = f"editing_pag_{pag_id}"
+                    del_key = f"confirm_del_pag_{pag_id}"
+
+                    # ── Linha de dados ──────────────────────────────────────
+                    if not st.session_state.get(ed_key):
+                        rc = st.columns([1.5, 1.5, 1.2, 1.5, 1.8, 2.5, 0.4, 0.4])
+                        rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
+                        rc[1].write(brl(pr["valor_pago"]))
+                        rc[2].write(brl(pr["juros"]))
+                        rc[3].write(brl(pr["amortizacao"]))
+                        rc[4].write(brl(pr["saldo_depois"]))
+                        rc[5].write(str(pr["observacao"] or ""))
+                        if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                            st.session_state[ed_key] = True
+                            st.rerun()
+                        if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
+                            st.session_state[del_key] = True
+                            st.rerun()
+
+                    # ── Confirmação de exclusão ─────────────────────────────
+                    if st.session_state.get(del_key):
+                        st.warning(f"Excluir pagamento de **{brl(pr['valor_pago'])}** em {pr['data_pagamento'].strftime('%d/%m/%Y')}?")
+                        dc1, dc2 = st.columns(2)
+                        if dc1.button("✅ Confirmar exclusão", key=f"conf_del_{pag_id}", type="primary"):
+                            sb.table("pagamentos_recebidos").delete().eq("id", pag_id).execute()
+                            st.session_state.pop(del_key, None)
+                            load_pagamentos_recebidos.clear()
+                            st.rerun()
+                        if dc2.button("❌ Cancelar", key=f"canc_del_{pag_id}"):
+                            st.session_state.pop(del_key, None)
+                            st.rerun()
+
+                    # ── Formulário de edição inline ─────────────────────────
+                    if st.session_state.get(ed_key):
+                        with st.form(key=f"form_edit_pag_{pag_id}"):
+                            fe1, fe2, fe3 = st.columns(3)
+                            ed_data  = fe1.date_input("Data", value=pr["data_pagamento"].date(), format="DD/MM/YYYY")
+                            ed_val   = fe2.text_input("Valor pago (R$)", value=brl_input(float(pr["valor_pago"] or 0)))
+                            ed_obs   = fe3.text_input("Observação", value=str(pr["observacao"] or ""))
+                            fe4, fe5 = st.columns(2)
+                            ed_juros = fe4.text_input("Juros (R$)", value=brl_input(float(pr["juros"] or 0)))
+                            ed_amort = fe5.text_input("Amortização (R$)", value=brl_input(float(pr["amortizacao"] or 0)))
+                            sb1, sb2 = st.columns(2)
+                            salvar   = sb1.form_submit_button("💾 Salvar", type="primary", use_container_width=True)
+                            cancelar = sb2.form_submit_button("❌ Cancelar", use_container_width=True)
+                        if salvar:
+                            sb.table("pagamentos_recebidos").update({
+                                "data_pagamento": str(ed_data),
+                                "valor_pago":     parse_brl(ed_val),
+                                "juros":          parse_brl(ed_juros),
+                                "amortizacao":    parse_brl(ed_amort),
+                                "observacao":     ed_obs,
+                            }).eq("id", pag_id).execute()
+                            st.session_state.pop(ed_key, None)
+                            load_pagamentos_recebidos.clear()
+                            st.rerun()
+                        if cancelar:
+                            st.session_state.pop(ed_key, None)
+                            st.rerun()
+
                 st.markdown("")
 
     # ── Novo Empréstimo ────────────────────────────────────────────────────────
