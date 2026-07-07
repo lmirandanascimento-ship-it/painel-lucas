@@ -988,54 +988,9 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         ed_key  = f"editing_pag_{pag_id}"
                         del_key = f"confirm_del_pag_{pag_id}"
 
-                        # ── Linha de dados ──────────────────────────────────
-                        if not st.session_state.get(ed_key) and not st.session_state.get(del_key):
-                            rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
-                            rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
-                            rc[1].write(brl(pr["valor_pago"]))
-                            rc[2].write(brl(pr["juros"]))
-                            rc[3].write(brl(pr["amortizacao"]))
-                            rc[4].write(brl(pr["saldo_depois"]))
-                            rc[5].write(str(pr["observacao"] or ""))
-                            if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
-                                st.session_state[ed_key] = True
-                                st.rerun()
-                            if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
-                                st.session_state[del_key] = True
-                                st.rerun()
-
-                        # ── Confirmação de exclusão ─────────────────────────
-                        if st.session_state.get(del_key):
-                            st.warning(
-                                f"Excluir pagamento de **{brl(pr['valor_pago'])}** "
-                                f"em {pr['data_pagamento'].strftime('%d/%m/%Y')}?"
-                            )
-                            dc1, dc2 = st.columns(2)
-                            if dc1.button("✅ Confirmar exclusão", key=f"conf_del_{pag_id}", type="primary"):
-                                sb.table("pagamentos_recebidos").delete().eq("id", pag_id).execute()
-                                st.session_state.pop(del_key, None)
-                                # ── Recalcular saldo do contrato ────────────
-                                res_amort = sb.table("pagamentos_recebidos")\
-                                    .select("amortizacao")\
-                                    .eq("emprestimo_id", eid).execute()
-                                total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
-                                novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
-                                novo_juros  = round(novo_saldo * taxa_c, 2)
-                                upd_c = {
-                                    "saldo_devedor": novo_saldo,
-                                    "parcela_juros": novo_juros,
-                                    "status": "quitado" if novo_saldo <= 0 else "ativo",
-                                }
-                                sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
-                                load_emprestimos_concedidos.clear()
-                                load_pagamentos_recebidos.clear()
-                                st.rerun()
-                            if dc2.button("❌ Cancelar", key=f"canc_del_{pag_id}"):
-                                st.session_state.pop(del_key, None)
-                                st.rerun()
-
-                        # ── Formulário de edição inline ─────────────────────
+                        # ── Estados mutuamente exclusivos: edit > delete > normal ──
                         if st.session_state.get(ed_key):
+                            # ── Formulário de edição ────────────────────────
                             with st.form(key=f"form_edit_pag_{pag_id}"):
                                 fe1, fe2, fe3 = st.columns(3)
                                 ed_data  = fe1.date_input("Data", value=pr["data_pagamento"].date(), format="DD/MM/YYYY")
@@ -1048,32 +1003,84 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 salvar   = fc1.form_submit_button("💾 Salvar", type="primary", use_container_width=True)
                                 cancelar = fc2.form_submit_button("❌ Cancelar", use_container_width=True)
                             if salvar:
-                                sb.table("pagamentos_recebidos").update({
-                                    "data_pagamento": str(ed_data),
-                                    "valor_pago":     round(parse_brl(ed_val), 2),
-                                    "juros":          round(parse_brl(ed_juros), 2),
-                                    "amortizacao":    round(parse_brl(ed_amort), 2),
-                                    "observacao":     ed_obs,
-                                }).eq("id", pag_id).execute()
-                                st.session_state.pop(ed_key, None)
-                                # ── Recalcular saldo do contrato ────────────
-                                res_amort = sb.table("pagamentos_recebidos")\
-                                    .select("amortizacao")\
-                                    .eq("emprestimo_id", eid).execute()
-                                total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
-                                novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
-                                novo_juros  = round(novo_saldo * taxa_c, 2)
-                                upd_c = {
-                                    "saldo_devedor": novo_saldo,
-                                    "parcela_juros": novo_juros,
-                                    "status": "quitado" if novo_saldo <= 0 else "ativo",
-                                }
-                                sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
-                                load_emprestimos_concedidos.clear()
-                                load_pagamentos_recebidos.clear()
-                                st.rerun()
+                                try:
+                                    sb.table("pagamentos_recebidos").update({
+                                        "data_pagamento": str(ed_data),
+                                        "valor_pago":     round(parse_brl(ed_val), 2),
+                                        "juros":          round(parse_brl(ed_juros), 2),
+                                        "amortizacao":    round(parse_brl(ed_amort), 2),
+                                        "observacao":     ed_obs,
+                                    }).eq("id", pag_id).execute()
+                                    st.session_state.pop(ed_key, None)
+                                    # ── Recalcular saldo do contrato ────────
+                                    res_amort = sb.table("pagamentos_recebidos")\
+                                        .select("amortizacao")\
+                                        .eq("emprestimo_id", eid).execute()
+                                    total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
+                                    novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
+                                    novo_juros  = round(novo_saldo * taxa_c, 2)
+                                    upd_c = {
+                                        "saldo_devedor": novo_saldo,
+                                        "parcela_juros": novo_juros,
+                                        "status": "quitado" if novo_saldo <= 0 else "ativo",
+                                    }
+                                    sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
+                                    load_emprestimos_concedidos.clear()
+                                    load_pagamentos_recebidos.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar: {e}")
                             if cancelar:
                                 st.session_state.pop(ed_key, None)
+                                st.rerun()
+
+                        elif st.session_state.get(del_key):
+                            # ── Confirmação de exclusão ─────────────────────
+                            st.warning(
+                                f"Excluir pagamento de **{brl(pr['valor_pago'])}** "
+                                f"em {pr['data_pagamento'].strftime('%d/%m/%Y')}?"
+                            )
+                            dc1, dc2 = st.columns(2)
+                            if dc1.button("✅ Confirmar exclusão", key=f"conf_del_{pag_id}", type="primary"):
+                                try:
+                                    sb.table("pagamentos_recebidos").delete().eq("id", pag_id).execute()
+                                    st.session_state.pop(del_key, None)
+                                    # ── Recalcular saldo do contrato ────────
+                                    res_amort = sb.table("pagamentos_recebidos")\
+                                        .select("amortizacao")\
+                                        .eq("emprestimo_id", eid).execute()
+                                    total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
+                                    novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
+                                    novo_juros  = round(novo_saldo * taxa_c, 2)
+                                    upd_c = {
+                                        "saldo_devedor": novo_saldo,
+                                        "parcela_juros": novo_juros,
+                                        "status": "quitado" if novo_saldo <= 0 else "ativo",
+                                    }
+                                    sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
+                                    load_emprestimos_concedidos.clear()
+                                    load_pagamentos_recebidos.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao excluir: {e}")
+                            if dc2.button("❌ Cancelar", key=f"canc_del_{pag_id}"):
+                                st.session_state.pop(del_key, None)
+                                st.rerun()
+
+                        else:
+                            # ── Linha de dados normal ───────────────────────
+                            rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                            rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
+                            rc[1].write(brl(pr["valor_pago"]))
+                            rc[2].write(brl(pr["juros"]))
+                            rc[3].write(brl(pr["amortizacao"]))
+                            rc[4].write(brl(pr["saldo_depois"]))
+                            rc[5].write(str(pr["observacao"] or ""))
+                            if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                                st.session_state[ed_key] = True
+                                st.rerun()
+                            if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
+                                st.session_state[del_key] = True
                                 st.rerun()
 
                 st.markdown("")
