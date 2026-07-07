@@ -867,19 +867,20 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
         if ativos_d.empty:
             st.info("Nenhum contrato ativo para este devedor.")
         else:
-            # Tabela de referência — saldo e juros de cada contrato
-            df_ref = ativos_d[["titulo", "saldo_devedor", "parcela_juros"]].copy()
-            df_ref.columns = ["Contrato", "Saldo Atual", "Juros/Mês"]
-            df_ref["Saldo Atual"] = df_ref["Saldo Atual"].apply(brl)
-            df_ref["Juros/Mês"]   = df_ref["Juros/Mês"].apply(brl)
-            st.dataframe(df_ref, hide_index=True, use_container_width=True)
+            # Seletor fora do form → atualiza preview sem enviar
+            contratos_opts = ativos_d["titulo"].tolist()
+            sel_pag = st.selectbox("Contrato", contratos_opts, key=f"pag_sel_{dev_id}")
+            row_pag  = ativos_d[ativos_d["titulo"] == sel_pag].iloc[0]
+            saldo_p  = float(row_pag["saldo_devedor"])
+            juros_p  = float(row_pag["parcela_juros"])
+            emp_id_p = int(row_pag["id"])
+            taxa_p   = float(row_pag["taxa_juros"])
+            st.caption(f"Saldo atual: **{brl(saldo_p)}** · Juros do mês: **{brl(juros_p)}**")
 
-            # selectbox DENTRO do form → não dispara rerun ao mudar
             with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
-                sel_pag = st.selectbox("Contrato", ativos_d["titulo"].tolist())
                 fp1, fp2 = st.columns(2)
                 valor_p = fp1.number_input("Valor recebido (R$)", min_value=0.01,
-                                            step=100.0)
+                                            value=round(juros_p, 2), step=100.0)
                 data_p  = fp2.date_input("Data do recebimento",
                                           value=datetime.now().date(),
                                           format="DD/MM/YYYY")
@@ -888,11 +889,6 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     "✅ Confirmar Recebimento", type="primary", use_container_width=True)
 
             if submitted_pag:
-                row_pag  = ativos_d[ativos_d["titulo"] == sel_pag].iloc[0]
-                saldo_p  = float(row_pag["saldo_devedor"])
-                juros_p  = float(row_pag["parcela_juros"])
-                emp_id_p = int(row_pag["id"])
-                taxa_p   = float(row_pag["taxa_juros"])
                 juros_rec    = min(valor_p, juros_p)
                 amort_p      = max(0.0, valor_p - juros_rec)
                 novo_saldo_p = max(0.0, saldo_p - amort_p)
@@ -1000,12 +996,19 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 # ─── TAB: EMPRÉSTIMOS ─────────────────────────────────────────────────────────
 def tab_emprestimos(emp: pd.DataFrame):
     """Aba principal de empréstimos: concedidos (créditos) + tomados (débitos)."""
-    sub1, sub2 = st.tabs(["🏦 Empréstimos Concedidos", "💳 Meus Empréstimos"])
+    # sub-navegação via session_state (não perde estado em reruns)
+    _EMP_SUBS = ["🏦 Empréstimos Concedidos", "💳 Meus Empréstimos"]
+    if "emp_sub_nav" not in st.session_state:
+        st.session_state["emp_sub_nav"] = _EMP_SUBS[0]
+    emp_nav = st.radio(
+        "Sub-seção", _EMP_SUBS, horizontal=True,
+        key="emp_sub_nav", label_visibility="collapsed"
+    )
 
     # ══════════════════════════════════════════════════════════════════════════
     # SUB-ABA 1: EMPRÉSTIMOS CONCEDIDOS (Lucas é o credor)
     # ══════════════════════════════════════════════════════════════════════════
-    with sub1:
+    if emp_nav == "🏦 Empréstimos Concedidos":
         devedores_df  = load_devedores()
         emp_conc_df   = load_emprestimos_concedidos()
         pagtos_all    = load_pagamentos_recebidos()
@@ -1081,7 +1084,7 @@ def tab_emprestimos(emp: pd.DataFrame):
     # ══════════════════════════════════════════════════════════════════════════
     # SUB-ABA 2: MEUS EMPRÉSTIMOS (Lucas é o devedor)
     # ══════════════════════════════════════════════════════════════════════════
-    with sub2:
+    elif emp_nav == "💳 Meus Empréstimos":
         def _form_novo():
             with st.expander("➕ Cadastrar Novo Empréstimo", expanded=emp.empty):
                 c1, c2 = st.columns(2)
@@ -1425,37 +1428,71 @@ if "user" not in st.session_state:
 else:
     render_header()
 
-    # Carga de dados
-    with st.spinner("Carregando dados..."):
-        snap_rv     = load_snapshot("RV")
-        snap_rf     = load_snapshot("RF")
-        posicoes_rv = load_posicoes_rv()
-        historico   = load_historico()
-        emprestimos = load_emprestimos()
-        investimentos = load_investimentos()
+    # Carga de dados (sem spinner — não interfere com estado de navegação)
+    snap_rv       = load_snapshot("RV")
+    snap_rf       = load_snapshot("RF")
+    posicoes_rv   = load_posicoes_rv()
+    historico     = load_historico()
+    emprestimos   = load_emprestimos()
+    investimentos = load_investimentos()
 
-    # Tabs principais
-    tabs = st.tabs([
+    # ── Navegação por session_state (nunca perde o estado em reruns) ──────────
+    _NAV = [
         "📊 Resumo",
         "📈 Ações BR", "🇧🇷 ETF BR", "🏢 FIIs",
         "🌍 Internacional",
         "🏛️ Tesouro", "📋 CRI/CRA", "💼 Fundos", "🏦 CDB/LCI/LCA",
         "📉 Evolução",
         "💳 Empréstimos", "🏢 Escritório",
-    ])
+    ]
+    if "nav_section" not in st.session_state:
+        st.session_state["nav_section"] = _NAV[0]
 
-    with tabs[0]:  tab_resumo(snap_rv, snap_rf, posicoes_rv)
-    with tabs[1]:  tab_rv_br("Ações BR",  snap_rv, posicoes_rv)
-    with tabs[2]:  tab_rv_br("ETF BR",    snap_rv, posicoes_rv)
-    with tabs[3]:  tab_rv_br("FII",       snap_rv, posicoes_rv)
-    with tabs[4]:  tab_internacional(snap_rv, posicoes_rv)
-    with tabs[5]:  tab_tesouro(snap_rf)
-    with tabs[6]:  tab_cricra(snap_rf)
-    with tabs[7]:  tab_fundos(snap_rf)
-    with tabs[8]:  tab_cdb(snap_rf)
-    with tabs[9]:  tab_evolucao(historico)
-    with tabs[10]: tab_emprestimos(emprestimos)
-    with tabs[11]: tab_escritorio(investimentos)
+    # CSS: radio horizontal estilizado como abas
+    st.markdown("""
+    <style>
+    div[data-testid="stRadio"] > label { display: none; }
+    div[data-testid="stRadio"] div[role="radiogroup"] {
+        display: flex; flex-wrap: wrap; gap: 0;
+        border-bottom: 2px solid #d0d0d0; margin-bottom: 1.2rem;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        display: flex; align-items: center; padding: 9px 13px;
+        cursor: pointer; border-bottom: 3px solid transparent;
+        margin-bottom: -2px; color: #555; font-size: 0.82rem;
+        white-space: nowrap; background: transparent;
+        transition: color .15s;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
+        color: #1A4731;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
+        border-bottom: 3px solid #1A4731;
+        color: #1A4731; font-weight: 700;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] {
+        display: none;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    nav = st.radio(
+        "Seção", _NAV, horizontal=True,
+        key="nav_section", label_visibility="collapsed"
+    )
+
+    # ── Conteúdo da seção ativa ───────────────────────────────────────────────
+    if   nav == "📊 Resumo":         tab_resumo(snap_rv, snap_rf, posicoes_rv)
+    elif nav == "📈 Ações BR":       tab_rv_br("Ações BR",  snap_rv, posicoes_rv)
+    elif nav == "🇧🇷 ETF BR":       tab_rv_br("ETF BR",    snap_rv, posicoes_rv)
+    elif nav == "🏢 FIIs":           tab_rv_br("FII",       snap_rv, posicoes_rv)
+    elif nav == "🌍 Internacional":  tab_internacional(snap_rv, posicoes_rv)
+    elif nav == "🏛️ Tesouro":       tab_tesouro(snap_rf)
+    elif nav == "📋 CRI/CRA":        tab_cricra(snap_rf)
+    elif nav == "💼 Fundos":         tab_fundos(snap_rf)
+    elif nav == "🏦 CDB/LCI/LCA":   tab_cdb(snap_rf)
+    elif nav == "📉 Evolução":       tab_evolucao(historico)
+    elif nav == "💳 Empréstimos":    tab_emprestimos(emprestimos)
+    elif nav == "🏢 Escritório":     tab_escritorio(investimentos)
 
     # Logout
     st.markdown("<br>", unsafe_allow_html=True)
