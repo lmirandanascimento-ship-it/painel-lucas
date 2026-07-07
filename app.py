@@ -875,12 +875,15 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             juros_p  = float(row_pag["parcela_juros"])
             emp_id_p = int(row_pag["id"])
             taxa_p   = float(row_pag["taxa_juros"])
-            st.caption(f"Saldo atual: **{brl(saldo_p)}** · Juros do mês: **{brl(juros_p)}**")
+            st.markdown(
+                f'<small style="color:#555">Saldo atual: <b>{brl(saldo_p)}</b> &nbsp;·&nbsp; Juros do mês: <b>{brl(juros_p)}</b></small>',
+                unsafe_allow_html=True)
 
             with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
                 fp1, fp2 = st.columns(2)
                 valor_p = fp1.number_input("Valor recebido (R$)", min_value=0.01,
-                                            value=round(juros_p, 2), step=100.0)
+                                            value=round(juros_p, 2), step=1.0,
+                                            format="%.2f")
                 data_p  = fp2.date_input("Data do recebimento",
                                           value=datetime.now().date(),
                                           format="DD/MM/YYYY")
@@ -960,7 +963,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             new_data   = nc2.date_input("Data do empréstimo",
                                          value=datetime.now().date(),
                                          format="DD/MM/YYYY")
-            new_valor  = nc1.number_input("Valor (R$)", min_value=0.0, step=1000.0)
+            new_valor  = nc1.number_input("Valor (R$)", min_value=0.0, step=1.0, format="%.2f")
             new_taxa_pct = nc2.number_input("Taxa a.m. (%)", min_value=0.0,
                                              max_value=10.0, step=0.01, format="%.2f")
             new_dia    = nc1.number_input("Dia de vencimento", min_value=1,
@@ -1091,12 +1094,12 @@ def tab_emprestimos(emp: pd.DataFrame):
                 novo_credor  = c1.text_input("Credor", key="ne_credor")
                 novo_titulo  = c2.text_input("Título / Descrição", key="ne_titulo")
                 novo_saldo_v = c1.number_input("Saldo devedor (R$)", min_value=0.0,
-                                               step=1000.0, key="ne_saldo")
+                                               step=1.0, format="%.2f", key="ne_saldo")
                 nova_taxa_v  = c2.number_input("Taxa a.m. (%)", min_value=0.0,
                                                max_value=100.0, step=0.01,
                                                format="%.2f", key="ne_taxa")
                 nova_parcela = round(novo_saldo_v * nova_taxa_v / 100, 2)
-                st.caption(f"Juros/mês estimados: {brl(nova_parcela)}")
+                st.markdown(f'<small style="color:#555">Juros/mês estimados: <b>{brl(nova_parcela)}</b></small>', unsafe_allow_html=True)
                 if st.button("💾 Cadastrar Empréstimo", key="btn_ne", use_container_width=True):
                     if not novo_credor or not novo_titulo or novo_saldo_v <= 0:
                         st.warning("Preencha todos os campos obrigatórios.")
@@ -1161,10 +1164,13 @@ def tab_emprestimos(emp: pd.DataFrame):
                 row_c        = emp[emp["titulo"] == sel_c].iloc[0]
                 saldo_at     = float(row_c["saldo_devedor"])
                 juros_mes_v  = float(row_c["parcela_juros"])
-                st.caption(f"Saldo atual: **{brl(saldo_at)}** | Juros do mês: **{brl(juros_mes_v)}**")
+                st.markdown(
+                    f'<small style="color:#555">Saldo atual: <b>{brl(saldo_at)}</b> &nbsp;|&nbsp; Juros do mês: <b>{brl(juros_mes_v)}</b></small>',
+                    unsafe_allow_html=True)
                 col_vp, col_dp = st.columns(2)
                 valor_pago_v = col_vp.number_input("Valor pago (R$)", min_value=0.0,
-                                                    value=float(juros_mes_v), step=100.0, key="pag_val")
+                                                    value=float(juros_mes_v), step=1.0,
+                                                    format="%.2f", key="pag_val")
                 data_pag_v   = col_dp.date_input("Data do pagamento",
                                                   value=datetime.now().date(), key="pag_data")
                 obs_v        = st.text_input("Observação", key="pag_obs")
@@ -1257,12 +1263,14 @@ def tab_escritorio(inv: pd.DataFrame):
             c1m, c2m = st.columns(2)
             mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
             tipo_v  = c2m.selectbox("Tipo", ["Aporte Mensal","Retirada","Ajuste","Outro"], key="em_tipo")
-            valor_v = c1m.number_input("Valor (R$)", min_value=0.0, step=500.0, key="em_valor")
-            rend_v  = c2m.number_input("Rendimento do mês (R$)", min_value=0.0, step=10.0, key="em_rend")
+            valor_v = c1m.number_input("Valor (R$)", min_value=0.0, step=1.0, format="%.2f", key="em_valor")
+            rend_v  = c2m.number_input("Rendimento do mês (R$)", min_value=0.0, step=1.0, format="%.2f", key="em_rend")
             saldo_calc = ultimo_saldo + valor_v + rend_v
-            st.caption(f"Saldo calculado: **{brl(saldo_calc)}** (último: {brl(ultimo_saldo)} + aporte: {brl(valor_v)} + rend: {brl(rend_v)})")
+            st.markdown(
+                f'<small style="color:#555">Saldo calculado: <b>{brl(saldo_calc)}</b> &nbsp;(último: {brl(ultimo_saldo)} + aporte: {brl(valor_v)} + rend: {brl(rend_v)})</small>',
+                unsafe_allow_html=True)
             saldo_manual = st.number_input("Saldo final (confirmado)", value=saldo_calc,
-                                           step=100.0, key="em_saldo_final")
+                                           step=1.0, format="%.2f", key="em_saldo_final")
             if st.button("💾 Salvar Lançamento", key="btn_em", use_container_width=True, type="primary"):
                 try:
                     mes_str = mes_v.strftime("%Y-%m-01")
@@ -1353,9 +1361,9 @@ def tab_escritorio(inv: pd.DataFrame):
         mes_sel    = st.selectbox("Mês", meses_disp[::-1], key="ed_mes")
         row_ed     = inv_plot[inv_plot["mes"].dt.strftime("%b/%Y") == mes_sel].iloc[0]
         c1e, c2e   = st.columns(2)
-        ed_valor   = c1e.number_input("Aporte (R$)", value=float(row_ed["valor"]), step=100.0, key="ed_val")
-        ed_rend    = c2e.number_input("Rendimento (R$)", value=float(row_ed["rendimento"]), step=10.0, key="ed_rend")
-        ed_saldo   = st.number_input("Saldo Final (R$)", value=float(row_ed["saldo_final"]), step=100.0, key="ed_saldo")
+        ed_valor   = c1e.number_input("Aporte (R$)", value=float(row_ed["valor"]), step=1.0, format="%.2f", key="ed_val")
+        ed_rend    = c2e.number_input("Rendimento (R$)", value=float(row_ed["rendimento"]), step=1.0, format="%.2f", key="ed_rend")
+        ed_saldo   = st.number_input("Saldo Final (R$)", value=float(row_ed["saldo_final"]), step=1.0, format="%.2f", key="ed_saldo")
         if st.button("💾 Salvar Edição", key="btn_ed", use_container_width=True):
             try:
                 mes_str = row_ed["mes"].strftime("%Y-%m-01")
