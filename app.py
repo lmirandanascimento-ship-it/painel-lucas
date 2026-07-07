@@ -172,7 +172,6 @@ def load_investimentos() -> pd.DataFrame:
     return df
 
 @st.cache_data(ttl=300, show_spinner=False)
-@st.cache_data(ttl=300, show_spinner=False)
 def load_devedores() -> pd.DataFrame:
     r = sb.table("devedores").select("*").eq("ativo", True).order("nome").execute()
     return pd.DataFrame(r.data) if r.data else pd.DataFrame()
@@ -1005,82 +1004,75 @@ def tab_emprestimos(emp: pd.DataFrame):
     with sub1:
         devedores_df  = load_devedores()
         emp_conc_df   = load_emprestimos_concedidos()
+        pagtos_all    = load_pagamentos_recebidos()
 
-        # ── KPIs globais ─────────────────────────────────────────────────────
-        ativos = emp_conc_df[emp_conc_df["status"] == "ativo"] if not emp_conc_df.empty else pd.DataFrame()
-        total_saldo   = float(ativos["saldo_devedor"].sum())  if not ativos.empty else 0.0
-        total_juros   = float(ativos["parcela_juros"].sum())  if not ativos.empty else 0.0
-        n_contratos   = len(ativos)
-        pagtos_df_all = load_pagamentos_recebidos()
-        total_receb   = float(pagtos_df_all["valor_pago"].sum()) if not pagtos_df_all.empty else 0.0
+        # ── KPIs globais ──────────────────────────────────────────────────────
+        ativos_glob  = emp_conc_df[emp_conc_df["status"] == "ativo"] if not emp_conc_df.empty else pd.DataFrame()
+        total_saldo  = float(ativos_glob["saldo_devedor"].sum()) if not ativos_glob.empty else 0.0
+        total_juros  = float(ativos_glob["parcela_juros"].sum()) if not ativos_glob.empty else 0.0
+        n_contratos  = len(ativos_glob)
+        total_receb  = float(pagtos_all["valor_pago"].sum())    if not pagtos_all.empty else 0.0
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"""<div class='kpi-card'>
-            <div class='kpi-value'>{brl(total_saldo)}</div>
-            <div class='kpi-label'>💰 Total a Receber</div>
-        </div>""", unsafe_allow_html=True)
-        c2.markdown(f"""<div class='kpi-card ouro'>
-            <div class='kpi-value'>{brl(total_juros)}</div>
-            <div class='kpi-label'>📅 Juros Mensais</div>
-        </div>""", unsafe_allow_html=True)
-        c3.markdown(f"""<div class='kpi-card'>
-            <div class='kpi-value'>{n_contratos}</div>
-            <div class='kpi-label'>📋 Contratos Ativos</div>
-        </div>""", unsafe_allow_html=True)
-        c4.markdown(f"""<div class='kpi-card'>
-            <div class='kpi-value'>{brl(total_receb)}</div>
-            <div class='kpi-label'>✅ Total Recebido</div>
-        </div>""", unsafe_allow_html=True)
+        c1.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_saldo)}</div>
+            <div class='kpi-label'>💰 Total a Receber</div></div>""", unsafe_allow_html=True)
+        c2.markdown(f"""<div class='kpi-card ouro'><div class='kpi-value'>{brl(total_juros)}</div>
+            <div class='kpi-label'>📅 Juros Mensais</div></div>""", unsafe_allow_html=True)
+        c3.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{n_contratos}</div>
+            <div class='kpi-label'>📋 Contratos Ativos</div></div>""", unsafe_allow_html=True)
+        c4.markdown(f"""<div class='kpi-card'><div class='kpi-value'>{brl(total_receb)}</div>
+            <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── Por devedor ───────────────────────────────────────────────────────
-        if not devedores_df.empty:
-            devedor_tabs = st.tabs(
-                [f"👤 {row['nome']}" for _, row in devedores_df.iterrows()]
-                + ["➕ Novo Devedor"]
-            )
-            for i, (_, dev_row) in enumerate(devedores_df.iterrows()):
-                with devedor_tabs[i]:
-                    _conteudo_devedor(int(dev_row["id"]), str(dev_row["nome"]))
-
-            # ── Aba: Novo Devedor ─────────────────────────────────────────────
-            with devedor_tabs[-1]:
-                nd1, nd2 = st.columns(2)
-                nd_nome     = nd1.text_input("Nome do devedor", key="nd_nome")
-                nd_categoria= nd2.text_input("Categoria (ex: Loja, Pessoa)", key="nd_cat")
-                nd_contato  = st.text_input("Contato (opcional)", key="nd_cont")
-                if st.button("💾 Cadastrar Devedor", key="btn_nd", use_container_width=True):
-                    if not nd_nome:
-                        st.warning("Informe o nome do devedor.")
-                    else:
+        if devedores_df.empty:
+            st.info("Nenhum devedor cadastrado ainda.")
+            with st.form("form_novo_devedor_first"):
+                nd_nome = st.text_input("Nome do devedor")
+                nd_cat  = st.text_input("Categoria (ex: Loja, Pessoa)")
+                if st.form_submit_button("💾 Cadastrar"):
+                    if nd_nome:
                         try:
-                            sb.table("devedores").insert({
-                                "nome": nd_nome, "categoria": nd_categoria,
-                                "contato": nd_contato, "ativo": True,
-                            }).execute()
-                            st.success(f"Devedor '{nd_nome}' cadastrado!")
+                            sb.table("devedores").insert({"nome": nd_nome, "categoria": nd_cat, "ativo": True}).execute()
                             load_devedores.clear()
-                            load_emprestimos_concedidos.clear()
+                            st.success("Devedor cadastrado!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro: {e}")
         else:
-            st.info("Nenhum devedor cadastrado ainda.")
-            with st.expander("➕ Cadastrar Primeiro Devedor", expanded=True):
-                nd_nome2 = st.text_input("Nome", key="nd_nome2")
-                nd_cat2  = st.text_input("Categoria", key="nd_cat2")
-                if st.button("💾 Cadastrar", key="btn_nd2"):
-                    if nd_nome2:
-                        try:
-                            sb.table("devedores").insert({
-                                "nome": nd_nome2, "categoria": nd_cat2, "ativo": True
-                            }).execute()
-                            st.success("Devedor cadastrado!")
-                            load_devedores.clear()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro: {e}")
+            # ── Seletor de devedor (selectbox em vez de tabs aninhadas) ───────
+            nomes_dev = [row["nome"] for _, row in devedores_df.iterrows()]
+            opcoes    = nomes_dev + ["➕ Cadastrar Novo Devedor"]
+            sel_dev   = st.selectbox("Devedor", opcoes, key="sel_devedor_conc",
+                                     label_visibility="collapsed")
+
+            if sel_dev == "➕ Cadastrar Novo Devedor":
+                st.markdown("### Novo Devedor")
+                with st.form("form_novo_devedor"):
+                    nd1, nd2 = st.columns(2)
+                    nd_nome     = nd1.text_input("Nome")
+                    nd_categoria= nd2.text_input("Categoria (ex: Loja, Pessoa)")
+                    nd_contato  = st.text_input("Contato (opcional)")
+                    if st.form_submit_button("💾 Cadastrar Devedor", use_container_width=True):
+                        if not nd_nome:
+                            st.warning("Informe o nome.")
+                        else:
+                            try:
+                                sb.table("devedores").insert({
+                                    "nome": nd_nome, "categoria": nd_categoria,
+                                    "contato": nd_contato, "ativo": True,
+                                }).execute()
+                                st.success(f"Devedor '{nd_nome}' cadastrado!")
+                                load_devedores.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro: {e}")
+            else:
+                dev_row  = devedores_df[devedores_df["nome"] == sel_dev].iloc[0]
+                dev_id   = int(dev_row["id"])
+                dev_nome = str(dev_row["nome"])
+                _conteudo_devedor(dev_id, dev_nome)
+
 
     # ══════════════════════════════════════════════════════════════════════════
     # SUB-ABA 2: MEUS EMPRÉSTIMOS (Lucas é o devedor)
