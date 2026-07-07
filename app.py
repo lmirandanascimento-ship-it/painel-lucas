@@ -897,7 +897,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 fp1, fp2 = st.columns(2)
                 valor_p_str = fp1.text_input("Valor recebido (R$)",
                                               value=brl_input(juros_p),
-                                              placeholder="ex: 800,00")
+                                              placeholder="ex: 800,00",
+                                              help="Digite o valor no formato 800,00 ou 2.000,50")
                 valor_p = parse_brl(valor_p_str)
                 data_p  = fp2.date_input("Data do recebimento",
                                           value=datetime.now().date(),
@@ -978,7 +979,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             new_data   = nc2.date_input("Data do empréstimo",
                                          value=datetime.now().date(),
                                          format="DD/MM/YYYY")
-            new_valor_str = nc1.text_input("Valor (R$)", value="0,00", placeholder="ex: 10.000,00")
+            new_valor_str = nc1.text_input("Valor (R$)", value="0,00", placeholder="ex: 10.000,00",
+                                           help="Digite o valor no formato 10.000,00")
             new_valor = parse_brl(new_valor_str)
             new_taxa_pct = nc2.number_input("Taxa a.m. (%)", min_value=0.0,
                                              max_value=10.0, step=0.01, format="%.2f")
@@ -1110,7 +1112,8 @@ def tab_emprestimos(emp: pd.DataFrame):
                 novo_credor  = c1.text_input("Credor", key="ne_credor")
                 novo_titulo  = c2.text_input("Título / Descrição", key="ne_titulo")
                 novo_saldo_str = c1.text_input("Saldo devedor (R$)", value="0,00",
-                                               placeholder="ex: 50.000,00", key="ne_saldo")
+                                               placeholder="ex: 50.000,00", key="ne_saldo",
+                                               help="Digite o valor no formato 50.000,00")
                 novo_saldo_v = parse_brl(novo_saldo_str)
                 nova_taxa_v  = c2.number_input("Taxa a.m. (%)", min_value=0.0,
                                                max_value=100.0, step=0.01,
@@ -1187,7 +1190,8 @@ def tab_emprestimos(emp: pd.DataFrame):
                 col_vp, col_dp = st.columns(2)
                 valor_pago_str = col_vp.text_input("Valor pago (R$)",
                                                     value=brl_input(juros_mes_v),
-                                                    placeholder="ex: 800,00", key="pag_val")
+                                                    placeholder="ex: 800,00", key="pag_val",
+                                                    help="Digite o valor no formato 800,00 ou 2.000,50")
                 valor_pago_v = parse_brl(valor_pago_str)
                 data_pag_v   = col_dp.date_input("Data do pagamento",
                                                   value=datetime.now().date(), key="pag_data")
@@ -1281,8 +1285,10 @@ def tab_escritorio(inv: pd.DataFrame):
             c1m, c2m = st.columns(2)
             mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
             tipo_v  = c2m.selectbox("Tipo", ["Aporte Mensal","Retirada","Ajuste","Outro"], key="em_tipo")
-            valor_str = c1m.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00", key="em_valor")
-            rend_str  = c2m.text_input("Rendimento do mês (R$)", value="0,00", placeholder="ex: 300,00", key="em_rend")
+            valor_str = c1m.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
+                                       help="Digite o valor no formato 5.000,00", key="em_valor")
+            rend_str  = c2m.text_input("Rendimento do mês (R$)", value="0,00", placeholder="ex: 300,00",
+                                       help="Digite o valor no formato 300,00", key="em_rend")
             valor_v = parse_brl(valor_str)
             rend_v  = parse_brl(rend_str)
             saldo_calc = ultimo_saldo + valor_v + rend_v
