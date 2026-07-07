@@ -72,6 +72,20 @@ def brl(v, sign=False):
     prefix = ("+" if v >= 0 else "-") if sign else ("-" if v < 0 else "")
     return f"R$ {prefix}{s}"
 
+def brl_input(v: float) -> str:
+    """Formata float para string de input no padrão BRL: 40.000,00"""
+    s = f"{abs(v):,.2f}".replace(",","X").replace(".",",").replace("X",".")
+    return s
+
+def parse_brl(s: str) -> float:
+    """Converte string BRL (ex: '40.000,00' ou '800,00') para float."""
+    try:
+        return float(str(s).strip()
+                     .replace("R$", "").replace(" ", "")
+                     .replace(".", "").replace(",", "."))
+    except Exception:
+        return 0.0
+
 def pct(v, sign=True):
     if v is None: return "—"
     v = float(v)
@@ -881,9 +895,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
             with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
                 fp1, fp2 = st.columns(2)
-                valor_p = fp1.number_input("Valor recebido (R$)", min_value=0.01,
-                                            value=round(juros_p, 2), step=1.0,
-                                            format="%.2f")
+                valor_p_str = fp1.text_input("Valor recebido (R$)",
+                                              value=brl_input(juros_p),
+                                              placeholder="ex: 800,00")
+                valor_p = parse_brl(valor_p_str)
                 data_p  = fp2.date_input("Data do recebimento",
                                           value=datetime.now().date(),
                                           format="DD/MM/YYYY")
@@ -963,7 +978,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             new_data   = nc2.date_input("Data do empréstimo",
                                          value=datetime.now().date(),
                                          format="DD/MM/YYYY")
-            new_valor  = nc1.number_input("Valor (R$)", min_value=0.0, step=1.0, format="%.2f")
+            new_valor_str = nc1.text_input("Valor (R$)", value="0,00", placeholder="ex: 10.000,00")
+            new_valor = parse_brl(new_valor_str)
             new_taxa_pct = nc2.number_input("Taxa a.m. (%)", min_value=0.0,
                                              max_value=10.0, step=0.01, format="%.2f")
             new_dia    = nc1.number_input("Dia de vencimento", min_value=1,
@@ -1093,8 +1109,9 @@ def tab_emprestimos(emp: pd.DataFrame):
                 c1, c2 = st.columns(2)
                 novo_credor  = c1.text_input("Credor", key="ne_credor")
                 novo_titulo  = c2.text_input("Título / Descrição", key="ne_titulo")
-                novo_saldo_v = c1.number_input("Saldo devedor (R$)", min_value=0.0,
-                                               step=1.0, format="%.2f", key="ne_saldo")
+                novo_saldo_str = c1.text_input("Saldo devedor (R$)", value="0,00",
+                                               placeholder="ex: 50.000,00", key="ne_saldo")
+                novo_saldo_v = parse_brl(novo_saldo_str)
                 nova_taxa_v  = c2.number_input("Taxa a.m. (%)", min_value=0.0,
                                                max_value=100.0, step=0.01,
                                                format="%.2f", key="ne_taxa")
@@ -1168,9 +1185,10 @@ def tab_emprestimos(emp: pd.DataFrame):
                     f'<small style="color:#555">Saldo atual: <b>{brl(saldo_at)}</b> &nbsp;|&nbsp; Juros do mês: <b>{brl(juros_mes_v)}</b></small>',
                     unsafe_allow_html=True)
                 col_vp, col_dp = st.columns(2)
-                valor_pago_v = col_vp.number_input("Valor pago (R$)", min_value=0.0,
-                                                    value=float(juros_mes_v), step=1.0,
-                                                    format="%.2f", key="pag_val")
+                valor_pago_str = col_vp.text_input("Valor pago (R$)",
+                                                    value=brl_input(juros_mes_v),
+                                                    placeholder="ex: 800,00", key="pag_val")
+                valor_pago_v = parse_brl(valor_pago_str)
                 data_pag_v   = col_dp.date_input("Data do pagamento",
                                                   value=datetime.now().date(), key="pag_data")
                 obs_v        = st.text_input("Observação", key="pag_obs")
@@ -1263,8 +1281,10 @@ def tab_escritorio(inv: pd.DataFrame):
             c1m, c2m = st.columns(2)
             mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
             tipo_v  = c2m.selectbox("Tipo", ["Aporte Mensal","Retirada","Ajuste","Outro"], key="em_tipo")
-            valor_v = c1m.number_input("Valor (R$)", min_value=0.0, step=1.0, format="%.2f", key="em_valor")
-            rend_v  = c2m.number_input("Rendimento do mês (R$)", min_value=0.0, step=1.0, format="%.2f", key="em_rend")
+            valor_str = c1m.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00", key="em_valor")
+            rend_str  = c2m.text_input("Rendimento do mês (R$)", value="0,00", placeholder="ex: 300,00", key="em_rend")
+            valor_v = parse_brl(valor_str)
+            rend_v  = parse_brl(rend_str)
             saldo_calc = ultimo_saldo + valor_v + rend_v
             st.markdown(
                 f'<small style="color:#555">Saldo calculado: <b>{brl(saldo_calc)}</b> &nbsp;(último: {brl(ultimo_saldo)} + aporte: {brl(valor_v)} + rend: {brl(rend_v)})</small>',
@@ -1361,9 +1381,12 @@ def tab_escritorio(inv: pd.DataFrame):
         mes_sel    = st.selectbox("Mês", meses_disp[::-1], key="ed_mes")
         row_ed     = inv_plot[inv_plot["mes"].dt.strftime("%b/%Y") == mes_sel].iloc[0]
         c1e, c2e   = st.columns(2)
-        ed_valor   = c1e.number_input("Aporte (R$)", value=float(row_ed["valor"]), step=1.0, format="%.2f", key="ed_val")
-        ed_rend    = c2e.number_input("Rendimento (R$)", value=float(row_ed["rendimento"]), step=1.0, format="%.2f", key="ed_rend")
-        ed_saldo   = st.number_input("Saldo Final (R$)", value=float(row_ed["saldo_final"]), step=1.0, format="%.2f", key="ed_saldo")
+        ed_valor_str = c1e.text_input("Aporte (R$)", value=brl_input(float(row_ed["valor"])), key="ed_val")
+        ed_rend_str  = c2e.text_input("Rendimento (R$)", value=brl_input(float(row_ed["rendimento"])), key="ed_rend")
+        ed_saldo_str = st.text_input("Saldo Final (R$)", value=brl_input(float(row_ed["saldo_final"])), key="ed_saldo")
+        ed_valor  = parse_brl(ed_valor_str)
+        ed_rend   = parse_brl(ed_rend_str)
+        ed_saldo  = parse_brl(ed_saldo_str)
         if st.button("💾 Salvar Edição", key="btn_ed", use_container_width=True):
             try:
                 mes_str = row_ed["mes"].strftime("%Y-%m-01")
