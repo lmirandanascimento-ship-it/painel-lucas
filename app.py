@@ -913,23 +913,23 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     "✅ Confirmar Recebimento", type="primary", use_container_width=True)
 
             if submitted_pag:
-                juros_rec    = min(valor_p, juros_p)
-                amort_p      = max(0.0, valor_p - juros_rec)
-                novo_saldo_p = max(0.0, saldo_p - amort_p)
+                # Amortização pura: o valor pago debita integralmente do saldo.
+                # Juros do período ficam registrados como referência, sem abater do valor.
+                amort_p      = valor_p
+                novo_saldo_p = round(max(0.0, saldo_p - amort_p), 2)
                 novo_juros_p = round(novo_saldo_p * taxa_p, 2)
                 try:
                     sb.table("pagamentos_recebidos").insert({
                         "emprestimo_id":  emp_id_p,
                         "data_pagamento": str(data_p),
                         "valor_pago":     round(valor_p, 2),
-                        "juros":          round(juros_rec, 2),
-                        "amortizacao":    round(amort_p, 2),
+                        "juros":          round(juros_p, 2),   # juros do período (referência)
+                        "amortizacao":    round(amort_p, 2),   # = valor_pago integral
                         "saldo_antes":    round(saldo_p, 2),
-                        "saldo_depois":   round(novo_saldo_p, 2),
+                        "saldo_depois":   novo_saldo_p,
                         "observacao":     obs_p,
                     }).execute()
-                    upd_p = {"saldo_devedor": round(novo_saldo_p, 2),
-                             "parcela_juros": novo_juros_p}
+                    upd_p = {"saldo_devedor": novo_saldo_p, "parcela_juros": novo_juros_p}
                     if novo_saldo_p == 0:
                         upd_p["status"] = "quitado"
                     sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
@@ -938,7 +938,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     st.success(
                         f"✅ Recebimento registrado! "
                         f"Contrato: **{sel_pag}** · "
-                        f"Juros: **{brl(juros_rec)}** · Amort.: **{brl(amort_p)}** · "
+                        f"Amort.: **{brl(amort_p)}** · "
                         f"Novo saldo: **{brl(novo_saldo_p)}**"
                         + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
                     )
