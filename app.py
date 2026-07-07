@@ -91,6 +91,10 @@ def parse_brl(s: str) -> float:
     except Exception:
         return 0.0
 
+def brl_md(v, sign=False) -> str:
+    """brl() com $ escapado para uso seguro em st.markdown (evita LaTeX)."""
+    return brl(v, sign=sign).replace("$", "&#36;")
+
 def pct(v, sign=True):
     if v is None: return "—"
     v = float(v)
@@ -895,7 +899,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             emp_id_p = int(row_pag["id"])
             taxa_p   = float(row_pag["taxa_juros"])
             st.markdown(
-                f'<small style="color:#555">Saldo atual: <b>{brl(saldo_p)}</b> &nbsp;·&nbsp; Juros do mês: <b>{brl(juros_p)}</b></small>',
+                f'<small style="color:#555">Saldo atual: <b>{brl_md(saldo_p)}</b> &nbsp;·&nbsp; Juros do mês: <b>{brl_md(juros_p)}</b></small>',
                 unsafe_allow_html=True)
 
             with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
@@ -969,8 +973,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         f"<b>{badge} {row_c['titulo']}</b>"
                         f"<span style='color:#666;font-size:0.85em'>"
                         f" &nbsp;·&nbsp; {len(pagtos_c)} pagamento(s)"
-                        f" &nbsp;·&nbsp; Total pago: <b>{brl(float(pagtos_c['valor_pago'].sum()))}</b>"
-                        f" &nbsp;·&nbsp; Saldo atual: <b>{brl(float(row_c['saldo_devedor']))}</b>"
+                        f" &nbsp;·&nbsp; Total pago: <b>{brl_md(float(pagtos_c['valor_pago'].sum()))}</b>"
+                        f" &nbsp;·&nbsp; Saldo atual: <b>{brl_md(float(row_c['saldo_devedor']))}</b>"
                         f"</span>",
                         unsafe_allow_html=True
                     )
@@ -993,12 +997,22 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             # ── Formulário de edição ────────────────────────
                             with st.form(key=f"form_edit_pag_{pag_id}"):
                                 fe1, fe2, fe3 = st.columns(3)
-                                ed_data  = fe1.date_input("Data", value=pr["data_pagamento"].date(), format="DD/MM/YYYY")
-                                ed_val   = fe2.text_input("Valor pago (R$)", value=brl_input(float(pr["valor_pago"] or 0)))
-                                ed_obs   = fe3.text_input("Observação", value=str(pr["observacao"] or ""))
+                                ed_data  = fe1.date_input("Data",
+                                    value=pr["data_pagamento"].date(), format="DD/MM/YYYY",
+                                    key=f"ed_data_{pag_id}")
+                                ed_val   = fe2.text_input("Valor pago (R$)",
+                                    value=brl_input(float(pr["valor_pago"] or 0)),
+                                    key=f"ed_val_{pag_id}")
+                                ed_obs   = fe3.text_input("Observação",
+                                    value=str(pr["observacao"] or ""),
+                                    key=f"ed_obs_{pag_id}")
                                 fe4, fe5 = st.columns(2)
-                                ed_juros = fe4.text_input("Juros (R$)", value=brl_input(float(pr["juros"] or 0)))
-                                ed_amort = fe5.text_input("Amortização (R$)", value=brl_input(float(pr["amortizacao"] or 0)))
+                                ed_juros = fe4.text_input("Juros (R$)",
+                                    value=brl_input(float(pr["juros"] or 0)),
+                                    key=f"ed_juros_{pag_id}")
+                                ed_amort = fe5.text_input("Amortização (R$)",
+                                    value=brl_input(float(pr["amortizacao"] or 0)),
+                                    key=f"ed_amort_{pag_id}")
                                 fc1, fc2 = st.columns(2)
                                 salvar   = fc1.form_submit_button("💾 Salvar", type="primary", use_container_width=True)
                                 cancelar = fc2.form_submit_button("❌ Cancelar", use_container_width=True)
@@ -1299,7 +1313,7 @@ def tab_emprestimos(emp: pd.DataFrame):
                 saldo_at     = float(row_c["saldo_devedor"])
                 juros_mes_v  = float(row_c["parcela_juros"])
                 st.markdown(
-                    f'<small style="color:#555">Saldo atual: <b>{brl(saldo_at)}</b> &nbsp;|&nbsp; Juros do mês: <b>{brl(juros_mes_v)}</b></small>',
+                    f'<small style="color:#555">Saldo atual: <b>{brl_md(saldo_at)}</b> &nbsp;|&nbsp; Juros do mês: <b>{brl_md(juros_mes_v)}</b></small>',
                     unsafe_allow_html=True)
                 col_vp, col_dp = st.columns(2)
                 valor_pago_str = col_vp.text_input("Valor pago (R$)",
