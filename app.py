@@ -1014,12 +1014,15 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             if fc1.button("💾 Salvar", key=f"btn_save_{pag_id}",
                                           type="primary", use_container_width=True):
                                 try:
-                                    novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                    novo_val_pago   = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                    saldo_antes_val = float(pr["saldo_antes"] or val_orig)
+                                    novo_saldo_dep  = round(max(0.0, saldo_antes_val - novo_val_pago), 2)
                                     sb.table("pagamentos_recebidos").update({
                                         "data_pagamento": str(st.session_state[_sk["data"]]),
                                         "valor_pago":     novo_val_pago,
                                         "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
                                         "amortizacao":    novo_val_pago,  # amort = valor pago (amortização pura)
+                                        "saldo_depois":   novo_saldo_dep,
                                         "observacao":     st.session_state[_sk["obs"]],
                                     }).eq("id", pag_id).execute()
                                     # limpar estado
