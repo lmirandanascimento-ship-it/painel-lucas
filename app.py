@@ -998,29 +998,28 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             "val":   f"sv_val_{pag_id}",
                             "obs":   f"sv_obs_{pag_id}",
                             "juros": f"sv_juros_{pag_id}",
-                            "amort": f"sv_amort_{pag_id}",
                         }
 
                         # ── Estados mutuamente exclusivos: edit > delete > normal ──
                         if st.session_state.get(ed_key):
                             # ── Edição sem st.form (mais confiável em loops aninhados) ──
-                            fe1, fe2, fe3 = st.columns(3)
-                            ed_data  = fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY")
-                            ed_val   = fe2.text_input("Valor pago (R$)", key=_sk["val"])
-                            ed_obs   = fe3.text_input("Observação", key=_sk["obs"])
-                            fe4, fe5 = st.columns(2)
-                            ed_juros = fe4.text_input("Juros (R$)", key=_sk["juros"])
-                            ed_amort = fe5.text_input("Amortização (R$)", key=_sk["amort"])
+                            # Amortização não é campo editável: amort = valor_pago (amortização pura)
+                            fe1, fe2, fe3, fe4 = st.columns(4)
+                            fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY")
+                            fe2.text_input("Valor pago (R$)", key=_sk["val"])
+                            fe3.text_input("Juros ref. (R$)", key=_sk["juros"])
+                            fe4.text_input("Observação", key=_sk["obs"])
                             fc1, fc2 = st.columns(2)
 
                             if fc1.button("💾 Salvar", key=f"btn_save_{pag_id}",
                                           type="primary", use_container_width=True):
                                 try:
+                                    novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
                                     sb.table("pagamentos_recebidos").update({
                                         "data_pagamento": str(st.session_state[_sk["data"]]),
-                                        "valor_pago":     round(parse_brl(st.session_state[_sk["val"]]), 2),
+                                        "valor_pago":     novo_val_pago,
                                         "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
-                                        "amortizacao":    round(parse_brl(st.session_state[_sk["amort"]]), 2),
+                                        "amortizacao":    novo_val_pago,  # amort = valor pago (amortização pura)
                                         "observacao":     st.session_state[_sk["obs"]],
                                     }).eq("id", pag_id).execute()
                                     # limpar estado
@@ -1100,7 +1099,6 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
                                 st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
                                 st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                st.session_state[_sk["amort"]] = brl_input(float(pr["amortizacao"] or 0))
                                 st.session_state[ed_key] = True
                                 st.rerun()
                             if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
