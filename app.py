@@ -992,40 +992,40 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         ed_key  = f"editing_pag_{pag_id}"
                         del_key = f"confirm_del_pag_{pag_id}"
 
+                        # ── Chaves de session_state para os campos de edição ──
+                        _sk = {
+                            "data":  f"sv_data_{pag_id}",
+                            "val":   f"sv_val_{pag_id}",
+                            "obs":   f"sv_obs_{pag_id}",
+                            "juros": f"sv_juros_{pag_id}",
+                            "amort": f"sv_amort_{pag_id}",
+                        }
+
                         # ── Estados mutuamente exclusivos: edit > delete > normal ──
                         if st.session_state.get(ed_key):
-                            # ── Formulário de edição ────────────────────────
-                            with st.form(key=f"form_edit_pag_{pag_id}"):
-                                fe1, fe2, fe3 = st.columns(3)
-                                ed_data  = fe1.date_input("Data",
-                                    value=pr["data_pagamento"].date(), format="DD/MM/YYYY",
-                                    key=f"ed_data_{pag_id}")
-                                ed_val   = fe2.text_input("Valor pago (R$)",
-                                    value=brl_input(float(pr["valor_pago"] or 0)),
-                                    key=f"ed_val_{pag_id}")
-                                ed_obs   = fe3.text_input("Observação",
-                                    value=str(pr["observacao"] or ""),
-                                    key=f"ed_obs_{pag_id}")
-                                fe4, fe5 = st.columns(2)
-                                ed_juros = fe4.text_input("Juros (R$)",
-                                    value=brl_input(float(pr["juros"] or 0)),
-                                    key=f"ed_juros_{pag_id}")
-                                ed_amort = fe5.text_input("Amortização (R$)",
-                                    value=brl_input(float(pr["amortizacao"] or 0)),
-                                    key=f"ed_amort_{pag_id}")
-                                fc1, fc2 = st.columns(2)
-                                salvar   = fc1.form_submit_button("💾 Salvar", type="primary", use_container_width=True)
-                                cancelar = fc2.form_submit_button("❌ Cancelar", use_container_width=True)
-                            if salvar:
+                            # ── Edição sem st.form (mais confiável em loops aninhados) ──
+                            fe1, fe2, fe3 = st.columns(3)
+                            ed_data  = fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY")
+                            ed_val   = fe2.text_input("Valor pago (R$)", key=_sk["val"])
+                            ed_obs   = fe3.text_input("Observação", key=_sk["obs"])
+                            fe4, fe5 = st.columns(2)
+                            ed_juros = fe4.text_input("Juros (R$)", key=_sk["juros"])
+                            ed_amort = fe5.text_input("Amortização (R$)", key=_sk["amort"])
+                            fc1, fc2 = st.columns(2)
+
+                            if fc1.button("💾 Salvar", key=f"btn_save_{pag_id}",
+                                          type="primary", use_container_width=True):
                                 try:
                                     sb.table("pagamentos_recebidos").update({
-                                        "data_pagamento": str(ed_data),
-                                        "valor_pago":     round(parse_brl(ed_val), 2),
-                                        "juros":          round(parse_brl(ed_juros), 2),
-                                        "amortizacao":    round(parse_brl(ed_amort), 2),
-                                        "observacao":     ed_obs,
+                                        "data_pagamento": str(st.session_state[_sk["data"]]),
+                                        "valor_pago":     round(parse_brl(st.session_state[_sk["val"]]), 2),
+                                        "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
+                                        "amortizacao":    round(parse_brl(st.session_state[_sk["amort"]]), 2),
+                                        "observacao":     st.session_state[_sk["obs"]],
                                     }).eq("id", pag_id).execute()
-                                    st.session_state.pop(ed_key, None)
+                                    # limpar estado
+                                    for k in [ed_key] + list(_sk.values()):
+                                        st.session_state.pop(k, None)
                                     # ── Recalcular saldo do contrato ────────
                                     res_amort = sb.table("pagamentos_recebidos")\
                                         .select("amortizacao")\
@@ -1044,8 +1044,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao salvar: {e}")
-                            if cancelar:
-                                st.session_state.pop(ed_key, None)
+
+                            if fc2.button("❌ Cancelar", key=f"btn_canc_{pag_id}",
+                                          use_container_width=True):
+                                for k in [ed_key] + list(_sk.values()):
+                                    st.session_state.pop(k, None)
                                 st.rerun()
 
                         elif st.session_state.get(del_key):
@@ -1091,6 +1094,13 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             rc[4].write(brl(pr["saldo_depois"]))
                             rc[5].write(str(pr["observacao"] or ""))
                             if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                                # Pré-carrega valores atuais no session_state
+                                dt = pr["data_pagamento"]
+                                st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                st.session_state[_sk["amort"]] = brl_input(float(pr["amortizacao"] or 0))
                                 st.session_state[ed_key] = True
                                 st.rerun()
                             if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
