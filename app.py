@@ -982,15 +982,14 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
                     # ── Cabeçalho das colunas ──────────────────────────────
                     hd = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
-                    for col, label in zip(hd, ["Data", "Valor Pago", "Juros",
+                    for col, label in zip(hd, ["Data de Pagamento", "Valor Pago", "Juros",
                                                "Amortização", "Saldo Após", "Obs", "", ""]):
                         col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
                     st.divider()
 
-                    # Lógica de pilha: só o pagamento com maior ID (inserido por último) tem botões
-                    # Usamos id.max() em vez de iloc[-1] para robustez — o ID é sempre auto-increment,
-                    # então o maior ID = pagamento registrado mais recentemente, independente de data.
-                    ultimo_pag_id = int(pagtos_c["id"].max())
+                    # Contratos quitados: sem botões. Demais: só o último ID pode editar/excluir.
+                    is_quitado_c = (row_c["status"] == "quitado") or (float(row_c.get("saldo_devedor", 1)) <= 0)
+                    ultimo_pag_id = -1 if is_quitado_c else int(pagtos_c["id"].max())
 
                     for _, pr in pagtos_c.iterrows():
                         pag_id    = int(pr["id"])
@@ -1097,27 +1096,57 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
                         else:
                             # ── Linha de dados normal ───────────────────────
-                            # Todas as linhas usam 8 colunas para alinhar com o cabeçalho.
-                            # As duas últimas ficam vazias nos lançamentos não-recentes.
-                            rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
-                            rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
-                            rc[1].write(brl(pr["valor_pago"]))
-                            rc[2].write(brl(pr["juros"]))
-                            rc[3].write(brl(pr["amortizacao"]))
-                            rc[4].write(brl(pr["saldo_depois"]))
-                            rc[5].write(str(pr["observacao"] or ""))
-                            if is_ultimo:
-                                if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
-                                    dt = pr["data_pagamento"]
-                                    st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
-                                    st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
-                                    st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
-                                    st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                    st.session_state[ed_key] = True
+                            if is_quitado_c:
+                                # Contrato quitado: linha com marca d'água verde, sem botões
+                                _d   = pr["data_pagamento"].strftime("%d/%m/%Y")
+                                _obs = str(pr["observacao"] or "")
+                                st.markdown(
+                                    f"""<div style="
+                                        display:grid;
+                                        grid-template-columns:1.4fr 1.4fr 1.2fr 1.4fr 1.6fr 2.4fr 0.7fr;
+                                        gap:6px;
+                                        background:rgba(40,167,69,0.08);
+                                        border-radius:6px;
+                                        padding:6px 10px;
+                                        align-items:center;
+                                        margin-bottom:4px;
+                                        font-size:0.88em;
+                                    ">
+                                        <span>{_d}</span>
+                                        <span>{brl(pr['valor_pago'])}</span>
+                                        <span>{brl(pr['juros'])}</span>
+                                        <span>{brl(pr['amortizacao'])}</span>
+                                        <span>{brl(pr['saldo_depois'])}</span>
+                                        <span style="color:#666">{_obs}</span>
+                                        <span style="
+                                            color:#28a745;font-weight:700;
+                                            font-size:0.75em;letter-spacing:0.08em;
+                                            opacity:0.65;text-align:right;
+                                        ">✓&nbsp;QUITADO</span>
+                                    </div>""",
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                # Contrato ativo: colunas padrão com botões no último lançamento
+                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                                rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
+                                rc[1].write(brl(pr["valor_pago"]))
+                                rc[2].write(brl(pr["juros"]))
+                                rc[3].write(brl(pr["amortizacao"]))
+                                rc[4].write(brl(pr["saldo_depois"]))
+                                rc[5].write(str(pr["observacao"] or ""))
+                                if is_ultimo:
+                                    if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                                        dt = pr["data_pagamento"]
+                                        st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                        st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                        st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                        st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                        st.session_state[ed_key] = True
+                                        st.rerun()
+                                if is_ultimo and rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
+                                    st.session_state[del_key] = True
                                     st.rerun()
-                            if is_ultimo and rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
-                                st.session_state[del_key] = True
-                                st.rerun()
 
                 st.markdown("")
 
