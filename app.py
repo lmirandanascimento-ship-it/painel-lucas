@@ -962,7 +962,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 pagtos_c = pagtos_d[pagtos_d["emprestimo_id"] == eid].copy()
                 if pagtos_c.empty:
                     continue
-                pagtos_c = pagtos_c.sort_values("data_pagamento")
+                pagtos_c = pagtos_c.sort_values(["data_pagamento", "id"], ascending=[True, True])
                 badge    = "✅" if row_c["status"] == "quitado" else "📋"
                 val_orig = float(row_c["valor_original"])
                 taxa_c   = float(row_c["taxa_juros"])
@@ -987,8 +987,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
                     st.divider()
 
-                    # Apenas o pagamento mais recente pode ser editado/excluído (lógica de pilha)
-                    ultimo_pag_id = int(pagtos_c.iloc[-1]["id"])
+                    # Lógica de pilha: só o pagamento com maior ID (inserido por último) tem botões
+                    # Usamos id.max() em vez de iloc[-1] para robustez — o ID é sempre auto-increment,
+                    # então o maior ID = pagamento registrado mais recentemente, independente de data.
+                    ultimo_pag_id = int(pagtos_c["id"].max())
 
                     for _, pr in pagtos_c.iterrows():
                         pag_id    = int(pr["id"])
