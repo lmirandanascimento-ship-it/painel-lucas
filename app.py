@@ -962,7 +962,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 pagtos_c = pagtos_d[pagtos_d["emprestimo_id"] == eid].copy()
                 if pagtos_c.empty:
                     continue
-                pagtos_c = pagtos_c.sort_values(["data_pagamento", "id"], ascending=[True, True])
+                pagtos_c = pagtos_c.sort_values(["data_pagamento", "id"], ascending=[False, False])
                 badge    = "✅" if row_c["status"] == "quitado" else "📋"
                 val_orig = float(row_c["valor_original"])
                 taxa_c   = float(row_c["taxa_juros"])
@@ -1097,12 +1097,9 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
                         else:
                             # ── Linha de dados normal ───────────────────────
-                            # Lançamentos antigos: 6 colunas de dados, sem botões
-                            # Lançamento mais recente: + 2 colunas com ✏️ e 🗑️
-                            if is_ultimo:
-                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
-                            else:
-                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4])
+                            # Todas as linhas usam 8 colunas para alinhar com o cabeçalho.
+                            # As duas últimas ficam vazias nos lançamentos não-recentes.
+                            rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
                             rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
                             rc[1].write(brl(pr["valor_pago"]))
                             rc[2].write(brl(pr["juros"]))
