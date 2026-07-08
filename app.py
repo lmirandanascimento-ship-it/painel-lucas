@@ -987,10 +987,14 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
                     st.divider()
 
+                    # Apenas o pagamento mais recente pode ser editado/excluído (lógica de pilha)
+                    ultimo_pag_id = int(pagtos_c.iloc[-1]["id"])
+
                     for _, pr in pagtos_c.iterrows():
-                        pag_id  = int(pr["id"])
-                        ed_key  = f"editing_pag_{pag_id}"
-                        del_key = f"confirm_del_pag_{pag_id}"
+                        pag_id    = int(pr["id"])
+                        ed_key    = f"editing_pag_{pag_id}"
+                        del_key   = f"confirm_del_pag_{pag_id}"
+                        is_ultimo = (pag_id == ultimo_pag_id)
 
                         # ── Chaves de session_state para os campos de edição ──
                         _sk = {
@@ -1014,33 +1018,36 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             if fc1.button("💾 Salvar", key=f"btn_save_{pag_id}",
                                           type="primary", use_container_width=True):
                                 try:
-                                    novo_val_pago   = round(parse_brl(st.session_state[_sk["val"]]), 2)
-                                    saldo_antes_val = float(pr["saldo_antes"] or val_orig)
-                                    novo_saldo_dep  = round(max(0.0, saldo_antes_val - novo_val_pago), 2)
+                                    novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                    # 1. Atualiza o registro do pagamento (amort = valor_pago)
                                     sb.table("pagamentos_recebidos").update({
                                         "data_pagamento": str(st.session_state[_sk["data"]]),
                                         "valor_pago":     novo_val_pago,
                                         "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
-                                        "amortizacao":    novo_val_pago,  # amort = valor pago (amortização pura)
-                                        "saldo_depois":   novo_saldo_dep,
+                                        "amortizacao":    novo_val_pago,
                                         "observacao":     st.session_state[_sk["obs"]],
                                     }).eq("id", pag_id).execute()
-                                    # limpar estado
-                                    for k in [ed_key] + list(_sk.values()):
-                                        st.session_state.pop(k, None)
-                                    # ── Recalcular saldo do contrato ────────
+                                    # 2. Recalcula saldo do contrato a partir de todas as amortizações
                                     res_amort = sb.table("pagamentos_recebidos")\
                                         .select("amortizacao")\
                                         .eq("emprestimo_id", eid).execute()
                                     total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
                                     novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
                                     novo_juros  = round(novo_saldo * taxa_c, 2)
+                                    # 3. Atualiza saldo_depois do pagamento = novo saldo do contrato
+                                    sb.table("pagamentos_recebidos").update({
+                                        "saldo_depois": novo_saldo,
+                                    }).eq("id", pag_id).execute()
+                                    # 4. Atualiza contrato
                                     upd_c = {
                                         "saldo_devedor": novo_saldo,
                                         "parcela_juros": novo_juros,
                                         "status": "quitado" if novo_saldo <= 0 else "ativo",
                                     }
                                     sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
+                                    # 5. Limpa estado e recarrega
+                                    for k in [ed_key] + list(_sk.values()):
+                                        st.session_state.pop(k, None)
                                     load_emprestimos_concedidos.clear()
                                     load_pagamentos_recebidos.clear()
                                     st.rerun()
@@ -1088,23 +1095,28 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
                         else:
                             # ── Linha de dados normal ───────────────────────
-                            rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                            # Lançamentos antigos: 6 colunas de dados, sem botões
+                            # Lançamento mais recente: + 2 colunas com ✏️ e 🗑️
+                            if is_ultimo:
+                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                            else:
+                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4])
                             rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
                             rc[1].write(brl(pr["valor_pago"]))
                             rc[2].write(brl(pr["juros"]))
                             rc[3].write(brl(pr["amortizacao"]))
                             rc[4].write(brl(pr["saldo_depois"]))
                             rc[5].write(str(pr["observacao"] or ""))
-                            if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
-                                # Pré-carrega valores atuais no session_state
-                                dt = pr["data_pagamento"]
-                                st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
-                                st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
-                                st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
-                                st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                st.session_state[ed_key] = True
-                                st.rerun()
-                            if rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
+                            if is_ultimo:
+                                if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                                    dt = pr["data_pagamento"]
+                                    st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                    st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                    st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                    st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                    st.session_state[ed_key] = True
+                                    st.rerun()
+                            if is_ultimo and rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
                                 st.session_state[del_key] = True
                                 st.rerun()
 
