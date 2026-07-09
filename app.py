@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -911,44 +911,52 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 valor_p = parse_brl(valor_p_str)
                 data_p  = fp2.date_input("Data do recebimento",
                                           value=datetime.now().date(),
+                                          min_value=date.today() - timedelta(days=365),
+                                          max_value=date.today(),
                                           format="DD/MM/YYYY")
                 obs_p   = st.text_input("Observação (opcional)")
                 submitted_pag = st.form_submit_button(
                     "✅ Confirmar Recebimento", type="primary", use_container_width=True)
 
             if submitted_pag:
-                # Amortização pura: o valor pago debita integralmente do saldo.
-                # Juros do período ficam registrados como referência, sem abater do valor.
-                amort_p      = valor_p
-                novo_saldo_p = round(max(0.0, saldo_p - amort_p), 2)
-                novo_juros_p = round(novo_saldo_p * taxa_p, 2)
-                try:
-                    sb.table("pagamentos_recebidos").insert({
-                        "emprestimo_id":  emp_id_p,
-                        "data_pagamento": str(data_p),
-                        "valor_pago":     round(valor_p, 2),
-                        "juros":          round(juros_p, 2),   # juros do período (referência)
-                        "amortizacao":    round(amort_p, 2),   # = valor_pago integral
-                        "saldo_antes":    round(saldo_p, 2),
-                        "saldo_depois":   novo_saldo_p,
-                        "observacao":     obs_p,
-                    }).execute()
-                    upd_p = {"saldo_devedor": novo_saldo_p, "parcela_juros": novo_juros_p}
-                    if novo_saldo_p == 0:
-                        upd_p["status"] = "quitado"
-                    sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
-                    load_emprestimos_concedidos.clear()
-                    load_pagamentos_recebidos.clear()
-                    st.success(
-                        f"✅ Recebimento registrado! "
-                        f"Contrato: **{sel_pag}** · "
-                        f"Amort.: **{brl(amort_p)}** · "
-                        f"Novo saldo: **{brl(novo_saldo_p)}**"
-                        + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
-                    )
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao registrar: {e}")
+                _hoje = date.today()
+                if data_p > _hoje:
+                    st.error("❌ Data futura não permitida. Utilize uma data até hoje.")
+                elif data_p < _hoje - timedelta(days=365):
+                    st.error("❌ Data muito antiga. O limite máximo é 1 ano no passado.")
+                else:
+                    # Amortização pura: o valor pago debita integralmente do saldo.
+                    # Juros do período ficam registrados como referência, sem abater do valor.
+                    amort_p      = valor_p
+                    novo_saldo_p = round(max(0.0, saldo_p - amort_p), 2)
+                    novo_juros_p = round(novo_saldo_p * taxa_p, 2)
+                    try:
+                        sb.table("pagamentos_recebidos").insert({
+                            "emprestimo_id":  emp_id_p,
+                            "data_pagamento": str(data_p),
+                            "valor_pago":     round(valor_p, 2),
+                            "juros":          round(juros_p, 2),   # juros do período (referência)
+                            "amortizacao":    round(amort_p, 2),   # = valor_pago integral
+                            "saldo_antes":    round(saldo_p, 2),
+                            "saldo_depois":   novo_saldo_p,
+                            "observacao":     obs_p,
+                        }).execute()
+                        upd_p = {"saldo_devedor": novo_saldo_p, "parcela_juros": novo_juros_p}
+                        if novo_saldo_p == 0:
+                            upd_p["status"] = "quitado"
+                        sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
+                        load_emprestimos_concedidos.clear()
+                        load_pagamentos_recebidos.clear()
+                        st.success(
+                            f"✅ Recebimento registrado! "
+                            f"Contrato: **{sel_pag}** · "
+                            f"Amort.: **{brl(amort_p)}** · "
+                            f"Novo saldo: **{brl(novo_saldo_p)}**"
+                            + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao registrar: {e}")
 
     # ── Histórico por contrato ─────────────────────────────────────────────────
     with st.expander("📜 Histórico de Pagamentos por Contrato"):
@@ -1010,7 +1018,9 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             # ── Edição sem st.form (mais confiável em loops aninhados) ──
                             # Amortização não é campo editável: amort = valor_pago (amortização pura)
                             fe1, fe2, fe3, fe4 = st.columns(4)
-                            fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY")
+                            fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY",
+                                           min_value=date.today() - timedelta(days=365),
+                                           max_value=date.today())
                             fe2.text_input("Valor pago (R$)", key=_sk["val"])
                             fe3.text_input("Juros ref. (R$)", key=_sk["juros"])
                             fe4.text_input("Observação", key=_sk["obs"])
@@ -1018,42 +1028,49 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
                             if fc1.button("💾 Salvar", key=f"btn_save_{pag_id}",
                                           type="primary", use_container_width=True):
-                                try:
-                                    novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
-                                    # 1. Atualiza o registro do pagamento (amort = valor_pago)
-                                    sb.table("pagamentos_recebidos").update({
-                                        "data_pagamento": str(st.session_state[_sk["data"]]),
-                                        "valor_pago":     novo_val_pago,
-                                        "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
-                                        "amortizacao":    novo_val_pago,
-                                        "observacao":     st.session_state[_sk["obs"]],
-                                    }).eq("id", pag_id).execute()
-                                    # 2. Recalcula saldo do contrato a partir de todas as amortizações
-                                    res_amort = sb.table("pagamentos_recebidos")\
-                                        .select("amortizacao")\
-                                        .eq("emprestimo_id", eid).execute()
-                                    total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
-                                    novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
-                                    novo_juros  = round(novo_saldo * taxa_c, 2)
-                                    # 3. Atualiza saldo_depois do pagamento = novo saldo do contrato
-                                    sb.table("pagamentos_recebidos").update({
-                                        "saldo_depois": novo_saldo,
-                                    }).eq("id", pag_id).execute()
-                                    # 4. Atualiza contrato
-                                    upd_c = {
-                                        "saldo_devedor": novo_saldo,
-                                        "parcela_juros": novo_juros,
-                                        "status": "quitado" if novo_saldo <= 0 else "ativo",
-                                    }
-                                    sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
-                                    # 5. Limpa estado e recarrega
-                                    for k in [ed_key] + list(_sk.values()):
-                                        st.session_state.pop(k, None)
-                                    load_emprestimos_concedidos.clear()
-                                    load_pagamentos_recebidos.clear()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar: {e}")
+                                _data_edit = st.session_state.get(_sk["data"])
+                                _hoje_e    = date.today()
+                                if _data_edit and _data_edit > _hoje_e:
+                                    st.error("❌ Data futura não permitida.")
+                                elif _data_edit and _data_edit < _hoje_e - timedelta(days=365):
+                                    st.error("❌ Data muito antiga. Limite: 1 ano no passado.")
+                                else:
+                                    try:
+                                        novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                        # 1. Atualiza o registro do pagamento (amort = valor_pago)
+                                        sb.table("pagamentos_recebidos").update({
+                                            "data_pagamento": str(st.session_state[_sk["data"]]),
+                                            "valor_pago":     novo_val_pago,
+                                            "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
+                                            "amortizacao":    novo_val_pago,
+                                            "observacao":     st.session_state[_sk["obs"]],
+                                        }).eq("id", pag_id).execute()
+                                        # 2. Recalcula saldo do contrato a partir de todas as amortizações
+                                        res_amort = sb.table("pagamentos_recebidos")\
+                                            .select("amortizacao")\
+                                            .eq("emprestimo_id", eid).execute()
+                                        total_amort = sum(float(p["amortizacao"] or 0) for p in res_amort.data)
+                                        novo_saldo  = round(max(0.0, val_orig - total_amort), 2)
+                                        novo_juros  = round(novo_saldo * taxa_c, 2)
+                                        # 3. Atualiza saldo_depois do pagamento = novo saldo do contrato
+                                        sb.table("pagamentos_recebidos").update({
+                                            "saldo_depois": novo_saldo,
+                                        }).eq("id", pag_id).execute()
+                                        # 4. Atualiza contrato
+                                        upd_c = {
+                                            "saldo_devedor": novo_saldo,
+                                            "parcela_juros": novo_juros,
+                                            "status": "quitado" if novo_saldo <= 0 else "ativo",
+                                        }
+                                        sb.table("emprestimos_concedidos").update(upd_c).eq("id", eid).execute()
+                                        # 5. Limpa estado e recarrega
+                                        for k in [ed_key] + list(_sk.values()):
+                                            st.session_state.pop(k, None)
+                                        load_emprestimos_concedidos.clear()
+                                        load_pagamentos_recebidos.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro ao salvar: {e}")
 
                             if fc2.button("❌ Cancelar", key=f"btn_canc_{pag_id}",
                                           use_container_width=True):
@@ -1157,6 +1174,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             new_titulo = nc1.text_input("Título")
             new_data   = nc2.date_input("Data do empréstimo",
                                          value=datetime.now().date(),
+                                         min_value=date.today() - timedelta(days=365),
+                                         max_value=date.today(),
                                          format="DD/MM/YYYY")
             new_valor_str = nc1.text_input("Valor (R$)", value="0,00", placeholder="ex: 10.000,00",
                                            help="Digite o valor no formato 10.000,00")
@@ -1168,7 +1187,12 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             submitted_ne = st.form_submit_button("💾 Cadastrar Empréstimo",
                                                   use_container_width=True)
         if submitted_ne:
-            if not new_titulo or new_valor <= 0:
+            _hoje_ne = date.today()
+            if new_data > _hoje_ne:
+                st.error("❌ Data futura não permitida. Utilize uma data até hoje.")
+            elif new_data < _hoje_ne - timedelta(days=365):
+                st.error("❌ Data muito antiga. O limite máximo é 1 ano no passado.")
+            elif not new_titulo or new_valor <= 0:
                 st.warning("Preencha título e valor.")
             else:
                 new_taxa    = new_taxa_pct / 100
@@ -1373,7 +1397,10 @@ def tab_emprestimos(emp: pd.DataFrame):
                                                     help="Digite o valor no formato 800,00 ou 2.000,50")
                 valor_pago_v = parse_brl(valor_pago_str)
                 data_pag_v   = col_dp.date_input("Data do pagamento",
-                                                  value=datetime.now().date(), key="pag_data")
+                                                  value=datetime.now().date(),
+                                                  min_value=date.today() - timedelta(days=365),
+                                                  max_value=date.today(),
+                                                  key="pag_data")
                 obs_v        = st.text_input("Observação", key="pag_obs")
                 juros_no_pag = min(valor_pago_v, juros_mes_v)
                 amort_v      = max(0.0, valor_pago_v - juros_no_pag)
@@ -1381,31 +1408,37 @@ def tab_emprestimos(emp: pd.DataFrame):
                 st.caption(f"↳ Juros: **{brl(juros_no_pag)}** | Amortização: **{brl(amort_v)}** | Novo saldo: **{brl(novo_saldo_v)}**")
                 if st.button("✅ Confirmar Pagamento", key="btn_pag",
                              use_container_width=True, type="primary"):
-                    try:
-                        emp_id = int(row_c["id"])
+                    _hoje_v = date.today()
+                    if data_pag_v > _hoje_v:
+                        st.error("❌ Data futura não permitida. Utilize uma data até hoje.")
+                    elif data_pag_v < _hoje_v - timedelta(days=365):
+                        st.error("❌ Data muito antiga. O limite máximo é 1 ano no passado.")
+                    else:
                         try:
-                            res_h  = sb.table("emprestimos").select("historico_pagamentos").eq("id", emp_id).execute()
-                            hist_v = (res_h.data[0].get("historico_pagamentos") or []) if res_h.data else []
-                            hist_v.append({
-                                "data": str(data_pag_v), "valor_pago": round(valor_pago_v, 2),
-                                "juros": round(juros_no_pag, 2), "amortizacao": round(amort_v, 2),
-                                "saldo_antes": round(saldo_at, 2), "saldo_depois": round(novo_saldo_v, 2),
-                                "obs": obs_v,
-                            })
-                            upd = {"saldo_devedor": round(novo_saldo_v, 2),
-                                   "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2),
-                                   "historico_pagamentos": hist_v}
-                        except Exception:
-                            upd = {"saldo_devedor": round(novo_saldo_v, 2),
-                                   "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2)}
-                        if novo_saldo_v == 0:
-                            upd["status"] = "quitado"
-                        sb.table("emprestimos").update(upd).eq("id", emp_id).execute()
-                        st.success(f"Pagamento registrado! Novo saldo: **{brl(novo_saldo_v)}**")
-                        load_emprestimos.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro: {e}")
+                            emp_id = int(row_c["id"])
+                            try:
+                                res_h  = sb.table("emprestimos").select("historico_pagamentos").eq("id", emp_id).execute()
+                                hist_v = (res_h.data[0].get("historico_pagamentos") or []) if res_h.data else []
+                                hist_v.append({
+                                    "data": str(data_pag_v), "valor_pago": round(valor_pago_v, 2),
+                                    "juros": round(juros_no_pag, 2), "amortizacao": round(amort_v, 2),
+                                    "saldo_antes": round(saldo_at, 2), "saldo_depois": round(novo_saldo_v, 2),
+                                    "obs": obs_v,
+                                })
+                                upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                                       "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2),
+                                       "historico_pagamentos": hist_v}
+                            except Exception:
+                                upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                                       "parcela_juros": round(novo_saldo_v * float(row_c["taxa_juros"]), 2)}
+                            if novo_saldo_v == 0:
+                                upd["status"] = "quitado"
+                            sb.table("emprestimos").update(upd).eq("id", emp_id).execute()
+                            st.success(f"Pagamento registrado! Novo saldo: **{brl(novo_saldo_v)}**")
+                            load_emprestimos.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
 
             with st.expander("✅ Marcar Contrato como Quitado"):
                 sel_q = st.selectbox("Contrato", emp["titulo"].tolist(), key="quit_sel")
