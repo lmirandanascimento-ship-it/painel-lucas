@@ -59,63 +59,44 @@ st.markdown(f"""
 .neg {{ color:#B71C1C; font-weight:700; }}
 
 /* ══════════════════════════════════════════════════════════════════
-   Botões de ação: ✏️ Editar  e  🗑️ Excluir  no histórico de pagamentos
-   Seletor usa descendente (espaço) pois o Streamlit insere 3+ divs
-   entre [data-testid="column"] e o elemento <button>.
-   Contexto: stVerticalBlockBorderWrapper = st.container(border=True)
+   Botões Editar / Excluir no histórico de pagamentos
+   Usando o seletor mais amplo possível para garantir aplicação.
    ══════════════════════════════════════════════════════════════════ */
 
-/* Estado normal — ambos os botões */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(-n+2)
-  button[data-testid="baseButton-secondary"] {{
+/* Botão Editar — fundo branco, borda âmbar */
+button[key*="btn_ed_"],
+[data-testid="stButton"]:has(button[key*="btn_ed_"]) button {{
     background      : #ffffff !important;
-    border          : 1.5px solid #d1d5db !important;
-    border-radius   : 10px !important;
-    box-shadow      : 0 1px 3px rgba(0,0,0,0.07),
-                      0 1px 2px rgba(0,0,0,0.04) !important;
-    min-height      : 32px !important;
-    padding         : 0 10px !important;
-    font-size       : 15px !important;
-    line-height     : 1 !important;
-    width           : 100% !important;
-    transition      : all 0.18s ease !important;
-    cursor          : pointer !important;
+    border          : 1.5px solid #d97706 !important;
+    border-radius   : 8px !important;
+    color           : #92400e !important;
+    font-weight     : 600 !important;
+    font-size       : 0.78rem !important;
+    box-shadow      : 0 1px 3px rgba(0,0,0,0.08) !important;
+    transition      : all 0.15s ease !important;
+}}
+button[key*="btn_ed_"]:hover {{
+    background      : #fffbeb !important;
+    border-color    : #b45309 !important;
+    box-shadow      : 0 3px 8px rgba(180,83,9,0.18) !important;
 }}
 
-/* Clique — efeito de pressionar */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(-n+2)
-  button[data-testid="baseButton-secondary"]:active {{
-    transform  : translateY(1px) !important;
-    box-shadow : none !important;
+/* Botão Excluir — fundo branco, borda vermelha */
+button[key*="btn_del_"],
+[data-testid="stButton"]:has(button[key*="btn_del_"]) button {{
+    background      : #ffffff !important;
+    border          : 1.5px solid #ef4444 !important;
+    border-radius   : 8px !important;
+    color           : #991b1b !important;
+    font-weight     : 600 !important;
+    font-size       : 0.78rem !important;
+    box-shadow      : 0 1px 3px rgba(0,0,0,0.08) !important;
+    transition      : all 0.15s ease !important;
 }}
-
-/* ✏️ Editar: segunda última coluna — hover âmbar */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(2)
-  button[data-testid="baseButton-secondary"]:hover {{
-    background   : #fffbeb !important;
-    border-color : #d97706 !important;
-    box-shadow   : 0 3px 8px rgba(217,119,6,0.2),
-                   0 1px 3px rgba(217,119,6,0.12) !important;
-    transform    : translateY(-1px) !important;
-}}
-
-/* 🗑️ Excluir: última coluna — borda rosada no repouso + hover vermelho */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
-  button[data-testid="baseButton-secondary"] {{
-    border-color : #fca5a5 !important;
-}}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
-  button[data-testid="baseButton-secondary"]:hover {{
-    background   : #fef2f2 !important;
-    border-color : #ef4444 !important;
-    box-shadow   : 0 3px 8px rgba(239,68,68,0.2),
-                   0 1px 3px rgba(239,68,68,0.12) !important;
-    transform    : translateY(-1px) !important;
+button[key*="btn_del_"]:hover {{
+    background      : #fef2f2 !important;
+    border-color    : #b91c1c !important;
+    box-shadow      : 0 3px 8px rgba(185,28,28,0.18) !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -1054,7 +1035,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     st.markdown("")
 
                     # ── Cabeçalho das colunas ──────────────────────────────
-                    hd = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                    hd = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
                     for col, label in zip(hd, ["Data de Pagamento", "Valor Pago", "Juros",
                                                "Amortização", "Saldo Após", "Obs", "", ""]):
                         col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
@@ -1223,7 +1204,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 )
                             else:
                                 # Contrato ativo: colunas padrão com botões no último lançamento
-                                rc = st.columns([1.4, 1.4, 1.2, 1.4, 1.6, 2.4, 0.35, 0.35])
+                                rc = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
                                 rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
                                 rc[1].write(brl(pr["valor_pago"]))
                                 rc[2].write(brl(pr["juros"]))
@@ -1232,7 +1213,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
-                                    if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
+                                    if rc[6].button("Editar", key=f"btn_ed_{pag_id}",
+                                                    use_container_width=True):
                                         dt = pr["data_pagamento"]
                                         st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
                                         st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
@@ -1240,7 +1222,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
                                         st.session_state[ed_key] = True
                                         st.rerun()
-                                if is_ultimo and rc[7].button("🗑️", key=f"btn_del_{pag_id}", help="Excluir"):
+                                if is_ultimo and rc[7].button("Excluir", key=f"btn_del_{pag_id}",
+                                                              use_container_width=True):
                                     st.session_state[del_key] = True
                                     st.rerun()
 
