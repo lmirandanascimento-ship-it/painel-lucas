@@ -59,41 +59,46 @@ st.markdown(f"""
 .neg {{ color:#B71C1C; font-weight:700; }}
 
 /* ══════════════════════════════════════════════════════════════════
-   Botões ✎ EDITAR / 🗑 EXCLUIR no histórico de pagamentos
-   Selector: wrapper stButton dentro das últimas 2 colunas de
-   um container com borda (st.container(border=True)).
+   Botões EDITAR / EXCLUIR no histórico de pagamentos
    ══════════════════════════════════════════════════════════════════ */
 
-/* ✎ EDITAR — segunda última coluna — laranja/âmbar */
+/* EDITAR — segunda última coluna — azul */
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:nth-last-child(2)
   div[data-testid="stButton"] button {{
-    background    : #d97706 !important;
+    background    : #1d4ed8 !important;
     color         : #ffffff !important;
     border        : none !important;
     border-radius : 8px !important;
     font-weight   : 700 !important;
     font-size     : 0.72rem !important;
-    letter-spacing: 0.04em !important;
-    box-shadow    : 0 2px 5px rgba(180,83,9,0.35) !important;
-    transition    : all 0.18s ease !important;
+    letter-spacing: 0.06em !important;
+    box-shadow    : 0 2px 6px rgba(29,78,216,0.40) !important;
+    transition    : background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease !important;
     min-height    : 34px !important;
+    cursor        : pointer !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:nth-last-child(2)
   div[data-testid="stButton"] button:hover {{
-    background    : #b45309 !important;
-    box-shadow    : 0 4px 10px rgba(180,83,9,0.45) !important;
+    background    : #1e40af !important;
+    box-shadow    : 0 0 0 3px rgba(59,130,246,0.45), 0 4px 12px rgba(29,78,216,0.40) !important;
     transform     : translateY(-1px) !important;
+}}
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:nth-last-child(2)
+  div[data-testid="stButton"] button:focus {{
+    box-shadow    : 0 0 0 3px rgba(59,130,246,0.55) !important;
+    outline       : none !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:nth-last-child(2)
   div[data-testid="stButton"] button:active {{
     transform     : translateY(1px) !important;
-    box-shadow    : none !important;
+    box-shadow    : 0 1px 3px rgba(29,78,216,0.30) !important;
 }}
 
-/* 🗑 EXCLUIR — última coluna — vermelho */
+/* EXCLUIR — última coluna — vermelho */
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:last-child
   div[data-testid="stButton"] button {{
@@ -103,23 +108,30 @@ div[data-testid="stVerticalBlockBorderWrapper"]
     border-radius : 8px !important;
     font-weight   : 700 !important;
     font-size     : 0.72rem !important;
-    letter-spacing: 0.04em !important;
-    box-shadow    : 0 2px 5px rgba(185,28,28,0.35) !important;
-    transition    : all 0.18s ease !important;
+    letter-spacing: 0.06em !important;
+    box-shadow    : 0 2px 6px rgba(220,38,38,0.40) !important;
+    transition    : background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease !important;
     min-height    : 34px !important;
+    cursor        : pointer !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:last-child
   div[data-testid="stButton"] button:hover {{
     background    : #b91c1c !important;
-    box-shadow    : 0 4px 10px rgba(185,28,28,0.45) !important;
+    box-shadow    : 0 0 0 3px rgba(239,68,68,0.45), 0 4px 12px rgba(220,38,38,0.40) !important;
     transform     : translateY(-1px) !important;
+}}
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:last-child
+  div[data-testid="stButton"] button:focus {{
+    box-shadow    : 0 0 0 3px rgba(239,68,68,0.55) !important;
+    outline       : none !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"]
   div[data-testid="column"]:last-child
   div[data-testid="stButton"] button:active {{
     transform     : translateY(1px) !important;
-    box-shadow    : none !important;
+    box-shadow    : 0 1px 3px rgba(220,38,38,0.30) !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -1236,7 +1248,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
-                                    if rc[6].button("✎ EDITAR", key=f"btn_ed_{pag_id}",
+                                    if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
                                                     use_container_width=True):
                                         dt = pr["data_pagamento"]
                                         st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
@@ -1245,7 +1257,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
                                         st.session_state[ed_key] = True
                                         st.rerun()
-                                if is_ultimo and rc[7].button("🗑 EXCLUIR", key=f"btn_del_{pag_id}",
+                                if is_ultimo and rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
                                                               use_container_width=True):
                                     st.session_state[del_key] = True
                                     st.rerun()
