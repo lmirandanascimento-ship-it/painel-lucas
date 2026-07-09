@@ -31,11 +31,17 @@ CLASS_COLORS = {
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
+/* ── Base ── */
 .stApp {{ background:#FFFBEF; }}
+#MainMenu {{visibility:hidden;}} footer {{visibility:hidden;}}
+
+/* ── Header ── */
 .header-3p {{
     background:{VERDE}; padding:14px 28px; border-radius:10px;
     margin-bottom:18px; display:flex; justify-content:space-between; align-items:center;
 }}
+
+/* ── KPI Cards ── */
 .kpi-card {{
     background:white; border:1px solid #E8E4D0;
     border-left:5px solid {VERDE}; border-radius:8px; padding:16px 18px;
@@ -51,7 +57,66 @@ st.markdown(f"""
 }}
 .pos {{ color:#1B7A34; font-weight:700; }}
 .neg {{ color:#B71C1C; font-weight:700; }}
-#MainMenu {{visibility:hidden;}} footer {{visibility:hidden;}}
+
+/* ══════════════════════════════════════════════════════════════════
+   Botões de ação: ✏️ Editar  e  🗑️ Excluir  no histórico de pagamentos
+   Seletor usa descendente (espaço) pois o Streamlit insere 3+ divs
+   entre [data-testid="column"] e o elemento <button>.
+   Contexto: stVerticalBlockBorderWrapper = st.container(border=True)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Estado normal — ambos os botões */
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:nth-last-child(-n+2)
+  button[data-testid="baseButton-secondary"] {{
+    background      : #ffffff !important;
+    border          : 1.5px solid #d1d5db !important;
+    border-radius   : 10px !important;
+    box-shadow      : 0 1px 3px rgba(0,0,0,0.07),
+                      0 1px 2px rgba(0,0,0,0.04) !important;
+    min-height      : 32px !important;
+    padding         : 0 10px !important;
+    font-size       : 15px !important;
+    line-height     : 1 !important;
+    width           : 100% !important;
+    transition      : all 0.18s ease !important;
+    cursor          : pointer !important;
+}}
+
+/* Clique — efeito de pressionar */
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:nth-last-child(-n+2)
+  button[data-testid="baseButton-secondary"]:active {{
+    transform  : translateY(1px) !important;
+    box-shadow : none !important;
+}}
+
+/* ✏️ Editar: segunda última coluna — hover âmbar */
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:nth-last-child(2)
+  button[data-testid="baseButton-secondary"]:hover {{
+    background   : #fffbeb !important;
+    border-color : #d97706 !important;
+    box-shadow   : 0 3px 8px rgba(217,119,6,0.2),
+                   0 1px 3px rgba(217,119,6,0.12) !important;
+    transform    : translateY(-1px) !important;
+}}
+
+/* 🗑️ Excluir: última coluna — borda rosada no repouso + hover vermelho */
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:last-child
+  button[data-testid="baseButton-secondary"] {{
+    border-color : #fca5a5 !important;
+}}
+div[data-testid="stVerticalBlockBorderWrapper"]
+  div[data-testid="column"]:last-child
+  button[data-testid="baseButton-secondary"]:hover {{
+    background   : #fef2f2 !important;
+    border-color : #ef4444 !important;
+    box-shadow   : 0 3px 8px rgba(239,68,68,0.2),
+                   0 1px 3px rgba(239,68,68,0.12) !important;
+    transform    : translateY(-1px) !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -960,32 +1025,6 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
     # ── Histórico por contrato ─────────────────────────────────────────────────
     with st.expander("📜 Histórico de Pagamentos por Contrato"):
-        # CSS para botões de ação (✏️ editar / 🗑️ excluir) — ícones flutuantes
-        st.markdown("""
-<style>
-/* Botões de ação no histórico de pagamentos */
-[data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child > div > div > button,
-[data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-last-child(2) > div > div > button {
-    background: transparent !important;
-    border: 1px solid #d9d9d9 !important;
-    border-radius: 8px !important;
-    padding: 2px 7px !important;
-    box-shadow: none !important;
-    min-height: 28px !important;
-    font-size: 15px !important;
-    color: #555 !important;
-    transition: background 0.15s, border-color 0.15s !important;
-}
-[data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-last-child(2) > div > div > button:hover {
-    background: rgba(255,193,7,0.12) !important;
-    border-color: #e6a817 !important;
-}
-[data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child > div > div > button:hover {
-    background: rgba(220,53,69,0.09) !important;
-    border-color: #dc3545 !important;
-}
-</style>""", unsafe_allow_html=True)
-
         if pagtos_d.empty:
             st.info("Nenhum pagamento registrado ainda.")
         else:
