@@ -59,12 +59,14 @@ st.markdown(f"""
 .neg {{ color:#B71C1C; font-weight:700; }}
 
 /* ══════════════════════════════════════════════════════════════════
-   Botões EDITAR / EXCLUIR no histórico de pagamentos
+   Botões EDITAR / EXCLUIR — estratégia :has() com âncora HTML única
+   Cada coluna recebe um <div id="editar-anchor-{id}"> ou
+   "excluir-anchor-{id}" ANTES do st.button, permitindo mirar
+   pelo atributo id sem depender de nth-child.
    ══════════════════════════════════════════════════════════════════ */
 
-/* EDITAR — segunda última coluna — azul */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(2)
+/* ── EDITAR — azul ── */
+div[data-testid="column"]:has([id^="editar-anchor-"])
   div[data-testid="stButton"] button {{
     background    : #1d4ed8 !important;
     color         : #ffffff !important;
@@ -73,34 +75,30 @@ div[data-testid="stVerticalBlockBorderWrapper"]
     font-weight   : 700 !important;
     font-size     : 0.72rem !important;
     letter-spacing: 0.06em !important;
-    box-shadow    : 0 2px 6px rgba(29,78,216,0.40) !important;
-    transition    : background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease !important;
+    box-shadow    : 0 2px 6px rgba(29,78,216,0.35) !important;
+    transition    : background 0.15s, box-shadow 0.15s, transform 0.12s !important;
     min-height    : 34px !important;
     cursor        : pointer !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(2)
+div[data-testid="column"]:has([id^="editar-anchor-"])
   div[data-testid="stButton"] button:hover {{
     background    : #1e40af !important;
-    box-shadow    : 0 0 0 3px rgba(59,130,246,0.45), 0 4px 12px rgba(29,78,216,0.40) !important;
+    box-shadow    : 0 0 0 3px rgba(59,130,246,0.45), 0 4px 12px rgba(29,78,216,0.35) !important;
     transform     : translateY(-1px) !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(2)
-  div[data-testid="stButton"] button:focus {{
-    box-shadow    : 0 0 0 3px rgba(59,130,246,0.55) !important;
+div[data-testid="column"]:has([id^="editar-anchor-"])
+  div[data-testid="stButton"] button:focus-visible {{
     outline       : none !important;
+    box-shadow    : 0 0 0 3px rgba(59,130,246,0.60) !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:nth-last-child(2)
+div[data-testid="column"]:has([id^="editar-anchor-"])
   div[data-testid="stButton"] button:active {{
     transform     : translateY(1px) !important;
-    box-shadow    : 0 1px 3px rgba(29,78,216,0.30) !important;
+    box-shadow    : 0 1px 3px rgba(29,78,216,0.25) !important;
 }}
 
-/* EXCLUIR — última coluna — vermelho */
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
+/* ── EXCLUIR — vermelho ── */
+div[data-testid="column"]:has([id^="excluir-anchor-"])
   div[data-testid="stButton"] button {{
     background    : #dc2626 !important;
     color         : #ffffff !important;
@@ -109,29 +107,26 @@ div[data-testid="stVerticalBlockBorderWrapper"]
     font-weight   : 700 !important;
     font-size     : 0.72rem !important;
     letter-spacing: 0.06em !important;
-    box-shadow    : 0 2px 6px rgba(220,38,38,0.40) !important;
-    transition    : background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease !important;
+    box-shadow    : 0 2px 6px rgba(220,38,38,0.35) !important;
+    transition    : background 0.15s, box-shadow 0.15s, transform 0.12s !important;
     min-height    : 34px !important;
     cursor        : pointer !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
+div[data-testid="column"]:has([id^="excluir-anchor-"])
   div[data-testid="stButton"] button:hover {{
     background    : #b91c1c !important;
-    box-shadow    : 0 0 0 3px rgba(239,68,68,0.45), 0 4px 12px rgba(220,38,38,0.40) !important;
+    box-shadow    : 0 0 0 3px rgba(239,68,68,0.45), 0 4px 12px rgba(220,38,38,0.35) !important;
     transform     : translateY(-1px) !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
-  div[data-testid="stButton"] button:focus {{
-    box-shadow    : 0 0 0 3px rgba(239,68,68,0.55) !important;
+div[data-testid="column"]:has([id^="excluir-anchor-"])
+  div[data-testid="stButton"] button:focus-visible {{
     outline       : none !important;
+    box-shadow    : 0 0 0 3px rgba(239,68,68,0.60) !important;
 }}
-div[data-testid="stVerticalBlockBorderWrapper"]
-  div[data-testid="column"]:last-child
+div[data-testid="column"]:has([id^="excluir-anchor-"])
   div[data-testid="stButton"] button:active {{
     transform     : translateY(1px) !important;
-    box-shadow    : 0 1px 3px rgba(220,38,38,0.30) !important;
+    box-shadow    : 0 1px 3px rgba(220,38,38,0.25) !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -1248,6 +1243,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
+                                    # Âncora CSS para colorir o botão EDITAR (azul via :has())
+                                    rc[6].markdown(
+                                        f'<div id="editar-anchor-{pag_id}" style="display:none"></div>',
+                                        unsafe_allow_html=True,
+                                    )
                                     if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
                                                     use_container_width=True):
                                         dt = pr["data_pagamento"]
@@ -1257,6 +1257,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
                                         st.session_state[ed_key] = True
                                         st.rerun()
+                                    # Âncora CSS para colorir o botão EXCLUIR (vermelho via :has())
+                                    rc[7].markdown(
+                                        f'<div id="excluir-anchor-{pag_id}" style="display:none"></div>',
+                                        unsafe_allow_html=True,
+                                    )
                                 if is_ultimo and rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
                                                               use_container_width=True):
                                     st.session_state[del_key] = True
