@@ -995,9 +995,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
                     st.divider()
 
-                    # Contratos quitados: sem botões. Demais: só o último ID pode editar/excluir.
-                    is_quitado_c = (row_c["status"] == "quitado") or (float(row_c.get("saldo_devedor", 1)) <= 0)
-                    ultimo_pag_id = -1 if is_quitado_c else int(pagtos_c["id"].max())
+                    # Contratos quitados: sem botões.
+                    # Demais: só o lançamento do topo (data mais recente, desempate por id) tem botões.
+                    # Como pagtos_c já está sorted desc por [data_pagamento, id], iloc[0] é o mais recente.
+                    is_quitado_c  = (row_c["status"] == "quitado") or (float(row_c.get("saldo_devedor", 1)) <= 0)
+                    ultimo_pag_id = -1 if is_quitado_c else int(pagtos_c.iloc[0]["id"])
 
                     for _, pr in pagtos_c.iterrows():
                         pag_id    = int(pr["id"])
