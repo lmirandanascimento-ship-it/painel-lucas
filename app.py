@@ -960,6 +960,32 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
     # ── Histórico por contrato ─────────────────────────────────────────────────
     with st.expander("📜 Histórico de Pagamentos por Contrato"):
+        # CSS para botões de ação (✏️ editar / 🗑️ excluir) — ícones flutuantes
+        st.markdown("""
+<style>
+/* Botões de ação no histórico de pagamentos */
+[data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child > div > div > button,
+[data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-last-child(2) > div > div > button {
+    background: transparent !important;
+    border: 1px solid #d9d9d9 !important;
+    border-radius: 8px !important;
+    padding: 2px 7px !important;
+    box-shadow: none !important;
+    min-height: 28px !important;
+    font-size: 15px !important;
+    color: #555 !important;
+    transition: background 0.15s, border-color 0.15s !important;
+}
+[data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-last-child(2) > div > div > button:hover {
+    background: rgba(255,193,7,0.12) !important;
+    border-color: #e6a817 !important;
+}
+[data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child > div > div > button:hover {
+    background: rgba(220,53,69,0.09) !important;
+    border-color: #dc3545 !important;
+}
+</style>""", unsafe_allow_html=True)
+
         if pagtos_d.empty:
             st.info("Nenhum pagamento registrado ainda.")
         else:
@@ -1000,6 +1026,17 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     # Como pagtos_c já está sorted desc por [data_pagamento, id], iloc[0] é o mais recente.
                     is_quitado_c  = (row_c["status"] == "quitado") or (float(row_c.get("saldo_devedor", 1)) <= 0)
                     ultimo_pag_id = -1 if is_quitado_c else int(pagtos_c.iloc[0]["id"])
+
+                    # Saldo Após retroativo: computa on-the-fly onde saldo_depois é nulo (importados).
+                    # Apenas para contratos ativos — quitados mantêm "—" conforme solicitado.
+                    _saldo_retro = {}
+                    if not is_quitado_c:
+                        _asc = pagtos_c.sort_values(["data_pagamento", "id"], ascending=[True, True])
+                        _cum = 0.0
+                        for _, _p in _asc.iterrows():
+                            _cum += float(_p.get("amortizacao") or 0)
+                            if _p["saldo_depois"] != _p["saldo_depois"]:  # NaN = NULL no banco
+                                _saldo_retro[int(_p["id"])] = round(max(0.0, val_orig - _cum), 2)
 
                     for _, pr in pagtos_c.iterrows():
                         pag_id    = int(pr["id"])
@@ -1152,7 +1189,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[1].write(brl(pr["valor_pago"]))
                                 rc[2].write(brl(pr["juros"]))
                                 rc[3].write(brl(pr["amortizacao"]))
-                                rc[4].write(brl(pr["saldo_depois"]))
+                                _sd = _saldo_retro.get(pag_id, pr["saldo_depois"])
+                                rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
                                     if rc[6].button("✏️", key=f"btn_ed_{pag_id}", help="Editar"):
