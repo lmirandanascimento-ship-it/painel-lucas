@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import create_client
 import pandas as pd
 import plotly.graph_objects as go
@@ -59,10 +60,9 @@ st.markdown(f"""
 .neg {{ color:#B71C1C; font-weight:700; }}
 
 /* ══════════════════════════════════════════════════════════════════
-   Botões EDITAR / EXCLUIR — estratégia :has() com âncora HTML única
-   Cada coluna recebe um <div id="editar-anchor-{id}"> ou
-   "excluir-anchor-{id}" ANTES do st.button, permitindo mirar
-   pelo atributo id sem depender de nth-child.
+   Botões EDITAR / EXCLUIR — estilo aplicado via MutationObserver JS
+   (components.html logo abaixo). O CSS aqui é fallback para
+   navegadores que suportam :has() nativamente.
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── EDITAR — azul ── */
@@ -131,6 +131,70 @@ div[data-testid="column"]:has([id^="excluir-anchor-"])
 </style>
 """, unsafe_allow_html=True)
 
+
+# ─── JS: colore botões EDITAR/EXCLUIR via MutationObserver ───────────────────
+# components.html roda num iframe same-origin → acessa window.parent.document
+components.html("""
+<script>
+(function() {
+    var doc = window.parent.document;
+    var win = window.parent;
+
+    // Desconecta observer anterior (evita acumulo em reruns)
+    if (win._stBtnObs) { win._stBtnObs.disconnect(); clearTimeout(win._stBtnT); }
+
+    function applyStyle(btn, bg, hoverBg, ring, tag) {
+        if (btn.dataset.stStyled === tag) return;
+        btn.style.cssText += [
+            'background:' + bg + '!important',
+            'color:#ffffff!important',
+            'border:none!important',
+            'border-radius:8px!important',
+            'font-weight:700!important',
+            'font-size:0.72rem!important',
+            'letter-spacing:0.06em!important',
+            'min-height:34px!important',
+            'width:100%!important',
+            'cursor:pointer!important',
+            'transition:background .15s,box-shadow .15s,transform .12s!important'
+        ].join(';') + ';';
+        btn.dataset.stStyled = tag;
+        btn.addEventListener('mouseover', function() {
+            this.style.background = hoverBg + '!important';
+            this.style.setProperty('box-shadow', '0 0 0 3px ' + ring, 'important');
+            this.style.setProperty('transform', 'translateY(-1px)', 'important');
+        });
+        btn.addEventListener('mouseout', function() {
+            this.style.setProperty('background', bg, 'important');
+            this.style.removeProperty('box-shadow');
+            this.style.removeProperty('transform');
+        });
+    }
+
+    function styleButtons() {
+        doc.querySelectorAll('[id^="editar-anchor-"]').forEach(function(el) {
+            var col = el.closest('[data-testid="column"]');
+            if (!col) return;
+            var btn = col.querySelector('button');
+            if (btn) applyStyle(btn, '#1d4ed8', '#1e40af', 'rgba(59,130,246,0.50)', 'edit');
+        });
+        doc.querySelectorAll('[id^="excluir-anchor-"]').forEach(function(el) {
+            var col = el.closest('[data-testid="column"]');
+            if (!col) return;
+            var btn = col.querySelector('button');
+            if (btn) applyStyle(btn, '#dc2626', '#b91c1c', 'rgba(239,68,68,0.50)', 'del');
+        });
+    }
+
+    win._stBtnObs = new MutationObserver(function() {
+        clearTimeout(win._stBtnT);
+        win._stBtnT = setTimeout(styleButtons, 30);
+    });
+    win._stBtnObs.observe(doc.documentElement, {childList: true, subtree: true});
+    styleButtons();
+})();
+</script>
+""", height=0)
 
 # ─── Supabase ─────────────────────────────────────────────────────────────────
 @st.cache_resource
