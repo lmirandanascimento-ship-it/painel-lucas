@@ -1288,27 +1288,30 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 _d   = pr["data_pagamento"].strftime("%d/%m/%Y")
                                 _sd  = _saldo_retro.get(pag_id, pr["saldo_depois"])
                                 _obs = str(pr["observacao"] or "")
+                                # Botões como <form method="get"> + SVG:
+                                # - form GET navega na MESMA aba (Streamlit não intercepta forms)
+                                # - SVG fill="#fff" é imune ao color!important do Streamlit
                                 if is_ultimo:
-                                    _btn_ed = (
-                                        f'<a href="?_btn_pag={pag_id}&_btn_act=e&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none">'
-                                        f'<svg width="100%" height="30" xmlns="http://www.w3.org/2000/svg">'
-                                        f'<rect width="100%" height="30" rx="6" fill="#1d4ed8"/>'
-                                        f'<text x="50%" y="20" text-anchor="middle" fill="#ffffff"'
-                                        f' font-size="10" font-weight="700"'
-                                        f' font-family="sans-serif">EDITAR</text>'
-                                        f'</svg></a>'
-                                    )
-                                    _btn_del = (
-                                        f'<a href="?_btn_pag={pag_id}&_btn_act=d&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none">'
-                                        f'<svg width="100%" height="30" xmlns="http://www.w3.org/2000/svg">'
-                                        f'<rect width="100%" height="30" rx="6" fill="#dc2626"/>'
-                                        f'<text x="50%" y="20" text-anchor="middle" fill="#ffffff"'
-                                        f' font-size="10" font-weight="700"'
-                                        f' font-family="sans-serif">EXCLUIR</text>'
-                                        f'</svg></a>'
-                                    )
+                                    def _svgform(pid, did, act, label, cor):
+                                        return (
+                                            f'<form method="get" action=""'
+                                            f' style="margin:0;padding:0;display:block">'
+                                            f'<input type="hidden" name="_btn_pag" value="{pid}">'
+                                            f'<input type="hidden" name="_btn_act" value="{act}">'
+                                            f'<input type="hidden" name="_dev_id" value="{did}">'
+                                            f'<button type="submit" style="width:100%;padding:0;'
+                                            f'margin:0;border:none;background:transparent;'
+                                            f'cursor:pointer;display:block;">'
+                                            f'<svg width="100%" height="30"'
+                                            f' xmlns="http://www.w3.org/2000/svg">'
+                                            f'<rect width="100%" height="30" rx="6" fill="{cor}"/>'
+                                            f'<text x="50%" y="20" text-anchor="middle"'
+                                            f' fill="#ffffff" font-size="10" font-weight="700"'
+                                            f' font-family="sans-serif">{label}</text>'
+                                            f'</svg></button></form>'
+                                        )
+                                    _btn_ed  = _svgform(pag_id, dev_id, "e", "EDITAR",  "#1d4ed8")
+                                    _btn_del = _svgform(pag_id, dev_id, "d", "EXCLUIR", "#dc2626")
                                 else:
                                     _btn_ed = _btn_del = ""
                                 st.markdown(
