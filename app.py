@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from supabase import create_client
 import pandas as pd
 import plotly.graph_objects as go
@@ -59,142 +58,10 @@ st.markdown(f"""
 .pos {{ color:#1B7A34; font-weight:700; }}
 .neg {{ color:#B71C1C; font-weight:700; }}
 
-/* ══════════════════════════════════════════════════════════════════
-   Botões EDITAR / EXCLUIR — estilo aplicado via MutationObserver JS
-   (components.html logo abaixo). O CSS aqui é fallback para
-   navegadores que suportam :has() nativamente.
-   ══════════════════════════════════════════════════════════════════ */
-
-/* ── EDITAR — azul ── */
-div[data-testid="column"]:has([id^="editar-anchor-"])
-  div[data-testid="stButton"] button {{
-    background    : #1d4ed8 !important;
-    color         : #ffffff !important;
-    border        : none !important;
-    border-radius : 8px !important;
-    font-weight   : 700 !important;
-    font-size     : 0.72rem !important;
-    letter-spacing: 0.06em !important;
-    box-shadow    : 0 2px 6px rgba(29,78,216,0.35) !important;
-    transition    : background 0.15s, box-shadow 0.15s, transform 0.12s !important;
-    min-height    : 34px !important;
-    cursor        : pointer !important;
-}}
-div[data-testid="column"]:has([id^="editar-anchor-"])
-  div[data-testid="stButton"] button:hover {{
-    background    : #1e40af !important;
-    box-shadow    : 0 0 0 3px rgba(59,130,246,0.45), 0 4px 12px rgba(29,78,216,0.35) !important;
-    transform     : translateY(-1px) !important;
-}}
-div[data-testid="column"]:has([id^="editar-anchor-"])
-  div[data-testid="stButton"] button:focus-visible {{
-    outline       : none !important;
-    box-shadow    : 0 0 0 3px rgba(59,130,246,0.60) !important;
-}}
-div[data-testid="column"]:has([id^="editar-anchor-"])
-  div[data-testid="stButton"] button:active {{
-    transform     : translateY(1px) !important;
-    box-shadow    : 0 1px 3px rgba(29,78,216,0.25) !important;
-}}
-
-/* ── EXCLUIR — vermelho ── */
-div[data-testid="column"]:has([id^="excluir-anchor-"])
-  div[data-testid="stButton"] button {{
-    background    : #dc2626 !important;
-    color         : #ffffff !important;
-    border        : none !important;
-    border-radius : 8px !important;
-    font-weight   : 700 !important;
-    font-size     : 0.72rem !important;
-    letter-spacing: 0.06em !important;
-    box-shadow    : 0 2px 6px rgba(220,38,38,0.35) !important;
-    transition    : background 0.15s, box-shadow 0.15s, transform 0.12s !important;
-    min-height    : 34px !important;
-    cursor        : pointer !important;
-}}
-div[data-testid="column"]:has([id^="excluir-anchor-"])
-  div[data-testid="stButton"] button:hover {{
-    background    : #b91c1c !important;
-    box-shadow    : 0 0 0 3px rgba(239,68,68,0.45), 0 4px 12px rgba(220,38,38,0.35) !important;
-    transform     : translateY(-1px) !important;
-}}
-div[data-testid="column"]:has([id^="excluir-anchor-"])
-  div[data-testid="stButton"] button:focus-visible {{
-    outline       : none !important;
-    box-shadow    : 0 0 0 3px rgba(239,68,68,0.60) !important;
-}}
-div[data-testid="column"]:has([id^="excluir-anchor-"])
-  div[data-testid="stButton"] button:active {{
-    transform     : translateY(1px) !important;
-    box-shadow    : 0 1px 3px rgba(220,38,38,0.25) !important;
-}}
+/* ── Botões EDITAR/EXCLUIR usam <a> HTML com inline styles — sem CSS necessário ── */
 </style>
 """, unsafe_allow_html=True)
 
-
-# ─── JS: colore botões EDITAR/EXCLUIR via MutationObserver ───────────────────
-# components.html roda num iframe same-origin → acessa window.parent.document
-components.html("""
-<script>
-(function() {
-    var doc = window.parent.document;
-    var win = window.parent;
-
-    // Desconecta observer anterior (evita acumulo em reruns)
-    if (win._stBtnObs) { win._stBtnObs.disconnect(); clearTimeout(win._stBtnT); }
-
-    function applyStyle(btn, bg, hoverBg, ring, tag) {
-        if (btn.dataset.stStyled === tag) return;
-        btn.style.cssText += [
-            'background:' + bg + '!important',
-            'color:#ffffff!important',
-            'border:none!important',
-            'border-radius:8px!important',
-            'font-weight:700!important',
-            'font-size:0.72rem!important',
-            'letter-spacing:0.06em!important',
-            'min-height:34px!important',
-            'width:100%!important',
-            'cursor:pointer!important',
-            'transition:background .15s,box-shadow .15s,transform .12s!important'
-        ].join(';') + ';';
-        btn.dataset.stStyled = tag;
-        btn.addEventListener('mouseover', function() {
-            this.style.background = hoverBg + '!important';
-            this.style.setProperty('box-shadow', '0 0 0 3px ' + ring, 'important');
-            this.style.setProperty('transform', 'translateY(-1px)', 'important');
-        });
-        btn.addEventListener('mouseout', function() {
-            this.style.setProperty('background', bg, 'important');
-            this.style.removeProperty('box-shadow');
-            this.style.removeProperty('transform');
-        });
-    }
-
-    function styleButtons() {
-        doc.querySelectorAll('[id^="editar-anchor-"]').forEach(function(el) {
-            var col = el.closest('[data-testid="column"]');
-            if (!col) return;
-            var btn = col.querySelector('button');
-            if (btn) applyStyle(btn, '#1d4ed8', '#1e40af', 'rgba(59,130,246,0.50)', 'edit');
-        });
-        doc.querySelectorAll('[id^="excluir-anchor-"]').forEach(function(el) {
-            var col = el.closest('[data-testid="column"]');
-            if (!col) return;
-            var btn = col.querySelector('button');
-            if (btn) applyStyle(btn, '#dc2626', '#b91c1c', 'rgba(239,68,68,0.50)', 'del');
-        });
-    }
-
-    win._stBtnObs = new MutationObserver(function() {
-        clearTimeout(win._stBtnT);
-        win._stBtnT = setTimeout(styleButtons, 30);
-    });
-    win._stBtnObs.observe(doc.documentElement, {childList: true, subtree: true});
-    styleButtons();
-})();
-</script>
-""", height=0)
 
 # ─── Supabase ─────────────────────────────────────────────────────────────────
 @st.cache_resource
@@ -1099,7 +966,16 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         st.error(f"Erro ao registrar: {e}")
 
     # ── Histórico por contrato ─────────────────────────────────────────────────
-    with st.expander("📜 Histórico de Pagamentos por Contrato"):
+    # Mantém o expander aberto se há formulário de edição/exclusão ativo,
+    # ou se acabou de chegar via link HTML (query param _open_dev).
+    _hist_has_active = (not pagtos_d.empty) and any(
+        st.session_state.get(f"editing_pag_{int(r['id'])}")
+        or st.session_state.get(f"confirm_del_pag_{int(r['id'])}")
+        for _, r in pagtos_d.iterrows()
+    )
+    _hist_force_open = (st.session_state.pop("_open_dev", None) == dev_id)
+    with st.expander("📜 Histórico de Pagamentos por Contrato",
+                     expanded=_hist_has_active or _hist_force_open):
         if pagtos_d.empty:
             st.info("Nenhum pagamento registrado ainda.")
         else:
@@ -1165,6 +1041,25 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             "obs":   f"sv_obs_{pag_id}",
                             "juros": f"sv_juros_{pag_id}",
                         }
+
+                        # ── Detecta clique nos botões HTML via query params ────
+                        # (os botões EDITAR/EXCLUIR são <a href="?_btn_pag=X&...">)
+                        if st.query_params.get("_btn_pag") == str(pag_id):
+                            _qact = st.query_params.get("_btn_act", "")
+                            _qdev = st.query_params.get("_dev_id", "")
+                            if _qact == "e":
+                                dt = pr["data_pagamento"]
+                                st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                st.session_state[ed_key] = True
+                            elif _qact == "d":
+                                st.session_state[del_key] = True
+                            if _qdev:
+                                st.session_state["_open_dev"] = int(_qdev)
+                            st.query_params.clear()
+                            st.rerun()
 
                         # ── Estados mutuamente exclusivos: edit > delete > normal ──
                         if st.session_state.get(ed_key):
@@ -1307,29 +1202,38 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
-                                    # Âncora CSS para colorir o botão EDITAR (azul via :has())
+                                    # Botão EDITAR — HTML puro, cor garantida por inline style
                                     rc[6].markdown(
-                                        f'<div id="editar-anchor-{pag_id}" style="display:none"></div>',
+                                        f'<a href="?_btn_pag={pag_id}&_btn_act=e&_dev_id={dev_id}"'
+                                        f' style="display:block;text-decoration:none;margin:2px 0">'
+                                        f'<div style="background:#1d4ed8;color:#fff;border-radius:8px;'
+                                        f'font-weight:700;font-size:0.75rem;letter-spacing:0.06em;'
+                                        f'padding:8px 4px;text-align:center;cursor:pointer;'
+                                        f'box-shadow:0 2px 5px rgba(29,78,216,.35);'
+                                        f'transition:background .15s,box-shadow .15s;"'
+                                        f' onmouseover="this.style.background=\'#1e40af\';'
+                                        f'this.style.boxShadow=\'0 0 0 3px rgba(59,130,246,0.5)\'"'
+                                        f' onmouseout="this.style.background=\'#1d4ed8\';'
+                                        f'this.style.boxShadow=\'0 2px 5px rgba(29,78,216,.35)\'"'
+                                        f'>EDITAR</div></a>',
                                         unsafe_allow_html=True,
                                     )
-                                    if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
-                                                    use_container_width=True):
-                                        dt = pr["data_pagamento"]
-                                        st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
-                                        st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
-                                        st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
-                                        st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                        st.session_state[ed_key] = True
-                                        st.rerun()
-                                    # Âncora CSS para colorir o botão EXCLUIR (vermelho via :has())
+                                    # Botão EXCLUIR — HTML puro, cor garantida por inline style
                                     rc[7].markdown(
-                                        f'<div id="excluir-anchor-{pag_id}" style="display:none"></div>',
+                                        f'<a href="?_btn_pag={pag_id}&_btn_act=d&_dev_id={dev_id}"'
+                                        f' style="display:block;text-decoration:none;margin:2px 0">'
+                                        f'<div style="background:#dc2626;color:#fff;border-radius:8px;'
+                                        f'font-weight:700;font-size:0.75rem;letter-spacing:0.06em;'
+                                        f'padding:8px 4px;text-align:center;cursor:pointer;'
+                                        f'box-shadow:0 2px 5px rgba(220,38,38,.35);'
+                                        f'transition:background .15s,box-shadow .15s;"'
+                                        f' onmouseover="this.style.background=\'#b91c1c\';'
+                                        f'this.style.boxShadow=\'0 0 0 3px rgba(239,68,68,0.5)\'"'
+                                        f' onmouseout="this.style.background=\'#dc2626\';'
+                                        f'this.style.boxShadow=\'0 2px 5px rgba(220,38,38,.35)\'"'
+                                        f'>EXCLUIR</div></a>',
                                         unsafe_allow_html=True,
                                     )
-                                if is_ultimo and rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
-                                                              use_container_width=True):
-                                    st.session_state[del_key] = True
-                                    st.rerun()
 
                 st.markdown("")
 
