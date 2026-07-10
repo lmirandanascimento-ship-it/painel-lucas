@@ -831,8 +831,17 @@ def tab_evolucao(historico: pd.DataFrame):
 # ─── helper: conteúdo por devedor ──────────────────────────────────────────────
 def _conteudo_devedor(dev_id: int, dev_nome: str):
     """KPIs, tabelas, formulário e histórico de um devedor."""
-    emp_conc_df = load_emprestimos_concedidos()
-    pagtos_all  = load_pagamentos_recebidos()
+    # Proteção: falha de rede/Supabase após .clear() não propaga "Oh no." para o Streamlit
+    try:
+        emp_conc_df = load_emprestimos_concedidos()
+        pagtos_all  = load_pagamentos_recebidos()
+    except Exception as _load_err:
+        st.error(f"⚠️ Erro ao carregar dados. Recarregue a página. ({_load_err})")
+        if st.button("🔄 Tentar novamente", key=f"retry_load_{dev_id}"):
+            load_emprestimos_concedidos.clear()
+            load_pagamentos_recebidos.clear()
+            st.rerun()
+        return
 
     emp_dev  = emp_conc_df[emp_conc_df["devedor_id"] == dev_id] if not emp_conc_df.empty else pd.DataFrame()
     ativos_d = emp_dev[emp_dev["status"] == "ativo"]  if not emp_dev.empty else pd.DataFrame()
@@ -1150,10 +1159,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                           type="primary", use_container_width=True):
                                 _data_edit = st.session_state.get(_sk["data"])
                                 _hoje_e    = date.today()
+                                # Validação: apenas datas futuras são bloqueadas.
+                                # Datas no passado são permitidas (consistente com min_value do date_input).
                                 if _data_edit and _data_edit > _hoje_e:
                                     st.error("❌ Data futura não permitida.")
-                                elif _data_edit and _data_edit < _hoje_e - timedelta(days=365):
-                                    st.error("❌ Data muito antiga. Limite: 1 ano no passado.")
                                 else:
                                     try:
                                         novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
