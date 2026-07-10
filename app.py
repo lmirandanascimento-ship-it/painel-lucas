@@ -1004,11 +1004,17 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     )
                     st.markdown("")
 
-                    # ── Cabeçalho das colunas ──────────────────────────────
-                    hd = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
-                    for col, label in zip(hd, ["Data de Pagamento", "Valor Pago", "Juros",
-                                               "Amortização", "Saldo Após", "Obs", "", ""]):
-                        col.markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
+                    # ── Cabeçalho das colunas (HTML grid — alinha exato com as linhas) ──
+                    _GCOLS = "1.4fr 1.4fr 1.1fr 1.4fr 1.5fr 2.0fr 0.85fr 0.85fr"
+                    st.markdown(
+                        f'<div style="display:grid;grid-template-columns:{_GCOLS};'
+                        f'gap:6px;padding:4px 4px 2px 4px;font-size:0.82em;font-weight:700;">'
+                        f'<span>Data de Pagamento</span><span>Valor Pago</span>'
+                        f'<span>Juros</span><span>Amortização</span>'
+                        f'<span>Saldo Após</span><span>Obs</span>'
+                        f'<span></span><span></span></div>',
+                        unsafe_allow_html=True,
+                    )
                     st.divider()
 
                     # Contratos quitados: sem botões.
@@ -1192,50 +1198,49 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     unsafe_allow_html=True,
                                 )
                             else:
-                                # Contrato ativo: colunas padrão com botões no último lançamento
-                                rc = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
-                                rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
-                                rc[1].write(brl(pr["valor_pago"]))
-                                rc[2].write(brl(pr["juros"]))
-                                rc[3].write(brl(pr["amortizacao"]))
-                                _sd = _saldo_retro.get(pag_id, pr["saldo_depois"])
-                                rc[4].write(brl(_sd))
-                                rc[5].write(str(pr["observacao"] or ""))
+                                # Contrato ativo: linha HTML grid (alinha dados + botões no mesmo grid)
+                                # Botões SVG → fill="white" é imune ao color !important do Streamlit
+                                _d   = pr["data_pagamento"].strftime("%d/%m/%Y")
+                                _sd  = _saldo_retro.get(pag_id, pr["saldo_depois"])
+                                _obs = str(pr["observacao"] or "")
                                 if is_ultimo:
-                                    # Botão EDITAR — HTML puro, cor garantida por inline style
-                                    rc[6].markdown(
+                                    _btn_ed = (
                                         f'<a href="?_btn_pag={pag_id}&_btn_act=e&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none;margin:2px 0;color:#fff!important">'
-                                        f'<div style="background:#1d4ed8!important;color:#fff!important;'
-                                        f'border-radius:8px;font-weight:700;font-size:0.75rem;'
-                                        f'letter-spacing:0.06em;padding:8px 4px;text-align:center;'
-                                        f'cursor:pointer;box-shadow:0 2px 5px rgba(29,78,216,.35);'
-                                        f'transition:background .15s,box-shadow .15s;"'
-                                        f' onmouseover="this.style.background=\'#1e40af\';'
-                                        f'this.style.boxShadow=\'0 0 0 3px rgba(59,130,246,0.5)\'"'
-                                        f' onmouseout="this.style.background=\'#1d4ed8\';'
-                                        f'this.style.boxShadow=\'0 2px 5px rgba(29,78,216,.35)\'">'
-                                        f'<span style="color:#fff!important;font-weight:700">EDITAR</span>'
-                                        f'</div></a>',
-                                        unsafe_allow_html=True,
+                                        f' style="display:block;text-decoration:none">'
+                                        f'<svg width="100%" height="30" xmlns="http://www.w3.org/2000/svg">'
+                                        f'<rect width="100%" height="30" rx="6" fill="#1d4ed8"/>'
+                                        f'<text x="50%" y="20" text-anchor="middle" fill="#ffffff"'
+                                        f' font-size="10" font-weight="700"'
+                                        f' font-family="sans-serif">EDITAR</text>'
+                                        f'</svg></a>'
                                     )
-                                    # Botão EXCLUIR — HTML puro, cor garantida por inline style
-                                    rc[7].markdown(
+                                    _btn_del = (
                                         f'<a href="?_btn_pag={pag_id}&_btn_act=d&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none;margin:2px 0;color:#fff!important">'
-                                        f'<div style="background:#dc2626!important;color:#fff!important;'
-                                        f'border-radius:8px;font-weight:700;font-size:0.75rem;'
-                                        f'letter-spacing:0.06em;padding:8px 4px;text-align:center;'
-                                        f'cursor:pointer;box-shadow:0 2px 5px rgba(220,38,38,.35);'
-                                        f'transition:background .15s,box-shadow .15s;"'
-                                        f' onmouseover="this.style.background=\'#b91c1c\';'
-                                        f'this.style.boxShadow=\'0 0 0 3px rgba(239,68,68,0.5)\'"'
-                                        f' onmouseout="this.style.background=\'#dc2626\';'
-                                        f'this.style.boxShadow=\'0 2px 5px rgba(220,38,38,.35)\'">'
-                                        f'<span style="color:#fff!important;font-weight:700">EXCLUIR</span>'
-                                        f'</div></a>',
-                                        unsafe_allow_html=True,
+                                        f' style="display:block;text-decoration:none">'
+                                        f'<svg width="100%" height="30" xmlns="http://www.w3.org/2000/svg">'
+                                        f'<rect width="100%" height="30" rx="6" fill="#dc2626"/>'
+                                        f'<text x="50%" y="20" text-anchor="middle" fill="#ffffff"'
+                                        f' font-size="10" font-weight="700"'
+                                        f' font-family="sans-serif">EXCLUIR</text>'
+                                        f'</svg></a>'
                                     )
+                                else:
+                                    _btn_ed = _btn_del = ""
+                                st.markdown(
+                                    f'<div style="display:grid;grid-template-columns:{_GCOLS};'
+                                    f'gap:6px;align-items:center;padding:5px 4px;'
+                                    f'font-size:0.88em;margin-bottom:2px;">'
+                                    f'<span>{_d}</span>'
+                                    f'<span>{brl(pr["valor_pago"])}</span>'
+                                    f'<span>{brl(pr["juros"])}</span>'
+                                    f'<span>{brl(pr["amortizacao"])}</span>'
+                                    f'<span>{brl(_sd)}</span>'
+                                    f'<span style="color:#555">{_obs}</span>'
+                                    f'<span>{_btn_ed}</span>'
+                                    f'<span>{_btn_del}</span>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
 
                 st.markdown("")
 
