@@ -858,19 +858,76 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Contratos ativos ───────────────────────────────────────────────────────
+    # ── Contratos ativos — cards com barra de progresso ──────────────────────
     if not ativos_d.empty:
-        st.markdown("**Contratos Ativos**")
-        df_at = ativos_d[["titulo","data_emprestimo","valor_original",
-                           "saldo_devedor","parcela_juros","dia_vencimento"]].copy()
-        df_at.columns = ["Título","Data Emp.","Valor Orig.","Saldo","Juros/Mês","Dia Venc."]
-        df_at["Data Emp."]   = df_at["Data Emp."].dt.strftime("%d/%m/%Y").fillna("—")
-        df_at["Valor Orig."] = df_at["Valor Orig."].apply(brl)
-        df_at["Saldo"]       = df_at["Saldo"].apply(brl)
-        df_at["Juros/Mês"]   = df_at["Juros/Mês"].apply(brl)
-        df_at["Dia Venc."]   = df_at["Dia Venc."].apply(
-            lambda x: f"Dia {int(x)}" if pd.notna(x) else "—")
-        st.dataframe(df_at, use_container_width=True, hide_index=True)
+        st.markdown(
+            "<span style='font-size:0.9rem;font-weight:700;color:#1A1A1A'>"
+            f"Contratos Ativos &nbsp;"
+            f"<span style='font-size:0.78rem;font-weight:400;color:#888'>"
+            f"({len(ativos_d)} contrato{'s' if len(ativos_d)>1 else ''})</span>"
+            "</span>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        _cards = []
+        for _, _r in ativos_d.sort_values("dia_vencimento", na_position="last").iterrows():
+            _titulo   = str(_r["titulo"])
+            _orig     = float(_r["valor_original"])
+            _saldo    = float(_r["saldo_devedor"])
+            _juros    = float(_r["parcela_juros"])
+            _dv       = _r["dia_vencimento"]
+            _dia_str  = f"Dia {int(_dv)}" if pd.notna(_dv) else "—"
+            _amort_v  = max(0.0, _orig - _saldo)
+            _amort_p  = round(min(100.0, _amort_v / _orig * 100), 1) if _orig > 0 else 0.0
+            # Cor da barra: verde quando amortizando, cinza quando sem pagamentos
+            _bar_col  = VERDE2 if _amort_p > 0 else "#ccc"
+            _cards.append(
+                f'<div style="background:#fff;border:1px solid #E8E4D0;border-radius:12px;'
+                f'padding:14px 16px;display:flex;flex-direction:column;gap:10px;">'
+
+                # ── Título + badge de vencimento
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+                f'<span style="font-size:13px;font-weight:600;color:#1A1A1A;line-height:1.3">{_titulo}</span>'
+                f'<span style="font-size:11px;color:#666;background:#F5F2E8;padding:3px 9px;'
+                f'border-radius:20px;white-space:nowrap;flex-shrink:0">Vence {_dia_str}</span>'
+                f'</div>'
+
+                # ── Saldo + Juros
+                f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                f'<div style="display:flex;flex-direction:column;gap:2px;">'
+                f'<span style="font-size:15px;font-weight:700;color:#1A1A1A">{brl(_saldo)}</span>'
+                f'<span style="font-size:10px;color:#999;letter-spacing:.02em">Saldo devedor</span>'
+                f'</div>'
+                f'<div style="display:flex;flex-direction:column;gap:2px;">'
+                f'<span style="font-size:15px;font-weight:700;color:{OURO}">{brl(_juros)}</span>'
+                f'<span style="font-size:10px;color:#999;letter-spacing:.02em">Juros / mês</span>'
+                f'</div>'
+                f'</div>'
+
+                # ── Barra de progresso
+                f'<div style="display:flex;flex-direction:column;gap:4px;">'
+                f'<div style="height:5px;border-radius:99px;background:#E8E4D0;overflow:hidden;">'
+                f'<div style="height:100%;width:{_amort_p}%;border-radius:99px;background:{_bar_col};'
+                f'transition:width .4s ease;"></div>'
+                f'</div>'
+                f'<div style="display:flex;justify-content:space-between;font-size:10px;color:#aaa;">'
+                f'<span>{_amort_p:.0f}% amortizado &nbsp;({brl(_amort_v)})</span>'
+                f'<span>Original: {brl(_orig)}</span>'
+                f'</div>'
+                f'</div>'
+
+                f'</div>'
+            )
+
+        # Grid 2 colunas (1 se só tiver 1 contrato)
+        _cols = "1fr 1fr" if len(_cards) > 1 else "1fr"
+        st.markdown(
+            f'<div style="display:grid;grid-template-columns:{_cols};gap:10px;margin-bottom:8px;">'
+            + "".join(_cards)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
 
     # ── Quitados ───────────────────────────────────────────────────────────────
     if not quit_d.empty:
@@ -881,14 +938,37 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     pq = pagtos_d[pagtos_d["emprestimo_id"] == int(qrow["id"])]
                     if not pq.empty:
                         datas_quit[int(qrow["id"])] = pq["data_pagamento"].max()
-            df_qt = quit_d[["id","titulo","valor_original","data_emprestimo"]].copy()
-            df_qt["Data Quit."] = df_qt["id"].map(
-                lambda x: datas_quit[x].strftime("%d/%m/%Y") if x in datas_quit else "—")
-            df_qt = df_qt[["titulo","valor_original","data_emprestimo","Data Quit."]]
-            df_qt.columns = ["Título","Valor Original","Data Emp.","Data Quit."]
-            df_qt["Valor Original"] = df_qt["Valor Original"].apply(brl)
-            df_qt["Data Emp."]      = df_qt["Data Emp."].dt.strftime("%d/%m/%Y").fillna("—")
-            st.dataframe(df_qt, use_container_width=True, hide_index=True)
+
+            _rows_q = []
+            for _, _q in quit_d.iterrows():
+                _qid      = int(_q["id"])
+                _qtit     = str(_q["titulo"])
+                _qorig    = float(_q["valor_original"])
+                _qemp     = _q["data_emprestimo"].strftime("%d/%m/%Y") if pd.notna(_q["data_emprestimo"]) else "—"
+                _qquit    = datas_quit[_qid].strftime("%d/%m/%Y") if _qid in datas_quit else "—"
+                _rows_q.append(
+                    f'<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;'
+                    f'gap:8px;align-items:center;padding:8px 12px;'
+                    f'border-bottom:1px solid #E8E4D0;font-size:0.85em;">'
+                    f'<span style="font-weight:600;color:#1A1A1A">{_qtit}</span>'
+                    f'<span style="color:#555">{brl(_qorig)}</span>'
+                    f'<span style="color:#888">Emp. {_qemp}</span>'
+                    f'<span style="color:#2D6A4F;font-weight:600">✓ {_qquit}</span>'
+                    f'</div>'
+                )
+            header_q = (
+                f'<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;'
+                f'gap:8px;padding:6px 12px;background:#F5F2E8;'
+                f'border-radius:8px 8px 0 0;font-size:0.75em;font-weight:600;color:#888;">'
+                f'<span>Título</span><span>Valor Original</span>'
+                f'<span>Data Emp.</span><span>Quitado em</span></div>'
+            )
+            st.markdown(
+                f'<div style="border:1px solid #E8E4D0;border-radius:8px;overflow:hidden;">'
+                + header_q + "".join(_rows_q)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
     st.markdown("---")
 
