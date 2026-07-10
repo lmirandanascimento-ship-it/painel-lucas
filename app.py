@@ -1072,8 +1072,13 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             # ── Edição sem st.form (mais confiável em loops aninhados) ──
                             # Amortização não é campo editável: amort = valor_pago (amortização pura)
                             fe1, fe2, fe3, fe4 = st.columns(4)
+                            # min_value dinâmico: se o pagamento for mais antigo que 365 dias,
+                            # usa a data do próprio pagamento como mínimo (evita StreamlitAPIException)
+                            _pag_dt = pr["data_pagamento"]
+                            _pag_date = _pag_dt.date() if hasattr(_pag_dt, "date") else _pag_dt
+                            _min_date = min(date.today() - timedelta(days=365*10), _pag_date)
                             fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY",
-                                           min_value=date.today() - timedelta(days=365),
+                                           min_value=_min_date,
                                            max_value=date.today())
                             fe2.text_input("Valor pago (R$)", key=_sk["val"])
                             fe3.text_input("Juros ref. (R$)", key=_sk["juros"])
