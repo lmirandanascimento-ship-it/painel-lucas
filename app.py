@@ -1205,33 +1205,35 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     # Botão EDITAR — HTML puro, cor garantida por inline style
                                     rc[6].markdown(
                                         f'<a href="?_btn_pag={pag_id}&_btn_act=e&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none;margin:2px 0">'
-                                        f'<div style="background:#1d4ed8;color:#fff;border-radius:8px;'
-                                        f'font-weight:700;font-size:0.75rem;letter-spacing:0.06em;'
-                                        f'padding:8px 4px;text-align:center;cursor:pointer;'
-                                        f'box-shadow:0 2px 5px rgba(29,78,216,.35);'
+                                        f' style="display:block;text-decoration:none;margin:2px 0;color:#fff!important">'
+                                        f'<div style="background:#1d4ed8!important;color:#fff!important;'
+                                        f'border-radius:8px;font-weight:700;font-size:0.75rem;'
+                                        f'letter-spacing:0.06em;padding:8px 4px;text-align:center;'
+                                        f'cursor:pointer;box-shadow:0 2px 5px rgba(29,78,216,.35);'
                                         f'transition:background .15s,box-shadow .15s;"'
                                         f' onmouseover="this.style.background=\'#1e40af\';'
                                         f'this.style.boxShadow=\'0 0 0 3px rgba(59,130,246,0.5)\'"'
                                         f' onmouseout="this.style.background=\'#1d4ed8\';'
-                                        f'this.style.boxShadow=\'0 2px 5px rgba(29,78,216,.35)\'"'
-                                        f'>EDITAR</div></a>',
+                                        f'this.style.boxShadow=\'0 2px 5px rgba(29,78,216,.35)\'">'
+                                        f'<span style="color:#fff!important;font-weight:700">EDITAR</span>'
+                                        f'</div></a>',
                                         unsafe_allow_html=True,
                                     )
                                     # Botão EXCLUIR — HTML puro, cor garantida por inline style
                                     rc[7].markdown(
                                         f'<a href="?_btn_pag={pag_id}&_btn_act=d&_dev_id={dev_id}"'
-                                        f' style="display:block;text-decoration:none;margin:2px 0">'
-                                        f'<div style="background:#dc2626;color:#fff;border-radius:8px;'
-                                        f'font-weight:700;font-size:0.75rem;letter-spacing:0.06em;'
-                                        f'padding:8px 4px;text-align:center;cursor:pointer;'
-                                        f'box-shadow:0 2px 5px rgba(220,38,38,.35);'
+                                        f' style="display:block;text-decoration:none;margin:2px 0;color:#fff!important">'
+                                        f'<div style="background:#dc2626!important;color:#fff!important;'
+                                        f'border-radius:8px;font-weight:700;font-size:0.75rem;'
+                                        f'letter-spacing:0.06em;padding:8px 4px;text-align:center;'
+                                        f'cursor:pointer;box-shadow:0 2px 5px rgba(220,38,38,.35);'
                                         f'transition:background .15s,box-shadow .15s;"'
                                         f' onmouseover="this.style.background=\'#b91c1c\';'
                                         f'this.style.boxShadow=\'0 0 0 3px rgba(239,68,68,0.5)\'"'
                                         f' onmouseout="this.style.background=\'#dc2626\';'
-                                        f'this.style.boxShadow=\'0 2px 5px rgba(220,38,38,.35)\'"'
-                                        f'>EXCLUIR</div></a>',
+                                        f'this.style.boxShadow=\'0 2px 5px rgba(220,38,38,.35)\'">'
+                                        f'<span style="color:#fff!important;font-weight:700">EXCLUIR</span>'
+                                        f'</div></a>',
                                         unsafe_allow_html=True,
                                     )
 
