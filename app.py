@@ -1128,25 +1128,6 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                             "juros": f"sv_juros_{pag_id}",
                         }
 
-                        # ── Detecta clique nos botões HTML via query params ────
-                        # (os botões EDITAR/EXCLUIR são <a href="?_btn_pag=X&...">)
-                        if st.query_params.get("_btn_pag") == str(pag_id):
-                            _qact = st.query_params.get("_btn_act", "")
-                            _qdev = st.query_params.get("_dev_id", "")
-                            if _qact == "e":
-                                dt = pr["data_pagamento"]
-                                st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
-                                st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
-                                st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
-                                st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                st.session_state[ed_key] = True
-                            elif _qact == "d":
-                                st.session_state[del_key] = True
-                            if _qdev:
-                                st.session_state["_open_dev"] = int(_qdev)
-                            st.query_params.clear()
-                            st.rerun()
-
                         # ── Estados mutuamente exclusivos: edit > delete > normal ──
                         if st.session_state.get(ed_key):
                             # ── Edição sem st.form (mais confiável em loops aninhados) ──
@@ -1283,52 +1264,71 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     unsafe_allow_html=True,
                                 )
                             else:
-                                # Contrato ativo: linha HTML grid (alinha dados + botões no mesmo grid)
-                                # Botões SVG → fill="white" é imune ao color !important do Streamlit
-                                _d   = pr["data_pagamento"].strftime("%d/%m/%Y")
-                                _sd  = _saldo_retro.get(pag_id, pr["saldo_depois"])
-                                _obs = str(pr["observacao"] or "")
-                                # Botões como <form method="get"> + SVG:
-                                # - form GET navega na MESMA aba (Streamlit não intercepta forms)
-                                # - SVG fill="#fff" é imune ao color!important do Streamlit
+                                # Contrato ativo: st.columns para alinhamento nativo do Streamlit
+                                # Botões coloridos via <style> local com :has() + ID único por pag_id
+                                # (CSS em <style> block nunca é stripped; !important é CSS válido aqui)
+                                rc = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
+                                _sd = _saldo_retro.get(pag_id, pr["saldo_depois"])
+                                rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
+                                rc[1].write(brl(pr["valor_pago"]))
+                                rc[2].write(brl(pr["juros"]))
+                                rc[3].write(brl(pr["amortizacao"]))
+                                rc[4].write(brl(_sd))
+                                rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
-                                    def _svgform(pid, did, act, label, cor):
-                                        return (
-                                            f'<form method="get" action=""'
-                                            f' style="margin:0;padding:0;display:block">'
-                                            f'<input type="hidden" name="_btn_pag" value="{pid}">'
-                                            f'<input type="hidden" name="_btn_act" value="{act}">'
-                                            f'<input type="hidden" name="_dev_id" value="{did}">'
-                                            f'<button type="submit" style="width:100%;padding:0;'
-                                            f'margin:0;border:none;background:transparent;'
-                                            f'cursor:pointer;display:block;">'
-                                            f'<svg width="100%" height="30"'
-                                            f' xmlns="http://www.w3.org/2000/svg">'
-                                            f'<rect width="100%" height="30" rx="6" fill="{cor}"/>'
-                                            f'<text x="50%" y="20" text-anchor="middle"'
-                                            f' fill="#ffffff" font-size="10" font-weight="700"'
-                                            f' font-family="sans-serif">{label}</text>'
-                                            f'</svg></button></form>'
-                                        )
-                                    _btn_ed  = _svgform(pag_id, dev_id, "e", "EDITAR",  "#1d4ed8")
-                                    _btn_del = _svgform(pag_id, dev_id, "d", "EXCLUIR", "#dc2626")
-                                else:
-                                    _btn_ed = _btn_del = ""
-                                st.markdown(
-                                    f'<div style="display:grid;grid-template-columns:{_GCOLS};'
-                                    f'gap:6px;align-items:center;padding:5px 4px;'
-                                    f'font-size:0.88em;margin-bottom:2px;">'
-                                    f'<span>{_d}</span>'
-                                    f'<span>{brl(pr["valor_pago"])}</span>'
-                                    f'<span>{brl(pr["juros"])}</span>'
-                                    f'<span>{brl(pr["amortizacao"])}</span>'
-                                    f'<span>{brl(_sd)}</span>'
-                                    f'<span style="color:#555">{_obs}</span>'
-                                    f'<span>{_btn_ed}</span>'
-                                    f'<span>{_btn_del}</span>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
+                                    # EDITAR — azul
+                                    rc[6].markdown(
+                                        f'<style>'
+                                        f'div[data-testid="column"]:has(#em{pag_id})'
+                                        f' div[data-testid="stButton"] button{{'
+                                        f'background:#1d4ed8 !important;'
+                                        f'color:#ffffff !important;'
+                                        f'border:none !important;'
+                                        f'border-radius:8px !important;'
+                                        f'font-weight:700 !important;'
+                                        f'font-size:.72rem !important;'
+                                        f'letter-spacing:.06em !important;}}'
+                                        f'div[data-testid="column"]:has(#em{pag_id})'
+                                        f' div[data-testid="stButton"] button:hover{{'
+                                        f'background:#1e40af !important;'
+                                        f'box-shadow:0 0 0 3px rgba(59,130,246,.45) !important;}}'
+                                        f'</style>'
+                                        f'<span id="em{pag_id}" hidden></span>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
+                                                    use_container_width=True):
+                                        dt = pr["data_pagamento"]
+                                        st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                        st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                        st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                        st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                        st.session_state[ed_key] = True
+                                        st.rerun()
+                                    # EXCLUIR — vermelho
+                                    rc[7].markdown(
+                                        f'<style>'
+                                        f'div[data-testid="column"]:has(#dm{pag_id})'
+                                        f' div[data-testid="stButton"] button{{'
+                                        f'background:#dc2626 !important;'
+                                        f'color:#ffffff !important;'
+                                        f'border:none !important;'
+                                        f'border-radius:8px !important;'
+                                        f'font-weight:700 !important;'
+                                        f'font-size:.72rem !important;'
+                                        f'letter-spacing:.06em !important;}}'
+                                        f'div[data-testid="column"]:has(#dm{pag_id})'
+                                        f' div[data-testid="stButton"] button:hover{{'
+                                        f'background:#b91c1c !important;'
+                                        f'box-shadow:0 0 0 3px rgba(239,68,68,.45) !important;}}'
+                                        f'</style>'
+                                        f'<span id="dm{pag_id}" hidden></span>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    if rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
+                                                    use_container_width=True):
+                                        st.session_state[del_key] = True
+                                        st.rerun()
 
                 st.markdown("")
 
