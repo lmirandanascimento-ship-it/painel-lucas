@@ -1264,9 +1264,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     unsafe_allow_html=True,
                                 )
                             else:
-                                # Contrato ativo: st.columns para alinhamento nativo do Streamlit
-                                # Botões coloridos via <style> local com :has() + ID único por pag_id
-                                # (CSS em <style> block nunca é stripped; !important é CSS válido aqui)
+                                # Contrato ativo: st.columns + st.button() (sem page reload)
+                                # CSS :has() com IDs únicos por pag_id colore SOMENTE aquele botão.
+                                # Também colapsa o stMarkdown da span a zero-height para alinhar.
+                                # Usa "stColumn" (Streamlit 1.28+) E "column" (versões antigas) como fallback.
                                 rc = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
                                 _sd = _saldo_retro.get(pag_id, pr["saldo_depois"])
                                 rc[0].write(pr["data_pagamento"].strftime("%d/%m/%Y"))
@@ -1276,24 +1277,27 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[4].write(brl(_sd))
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
-                                    # EDITAR — azul
+                                    # ── EDITAR — azul ──────────────────────────
                                     rc[6].markdown(
                                         f'<style>'
-                                        f'div[data-testid="column"]:has(#em{pag_id})'
-                                        f' div[data-testid="stButton"] button{{'
-                                        f'background:#1d4ed8 !important;'
-                                        f'color:#ffffff !important;'
-                                        f'border:none !important;'
-                                        f'border-radius:8px !important;'
-                                        f'font-weight:700 !important;'
-                                        f'font-size:.72rem !important;'
-                                        f'letter-spacing:.06em !important;}}'
-                                        f'div[data-testid="column"]:has(#em{pag_id})'
-                                        f' div[data-testid="stButton"] button:hover{{'
-                                        f'background:#1e40af !important;'
-                                        f'box-shadow:0 0 0 3px rgba(59,130,246,.45) !important;}}'
+                                        # Colapsa o container da span (height 0 → não empurra o botão)
+                                        f'div[data-testid="stColumn"]:has(#em{pag_id}) [data-testid="stMarkdown"],'
+                                        f'div[data-testid="column"]:has(#em{pag_id}) [data-testid="stMarkdown"]'
+                                        f'{{height:0!important;overflow:hidden!important;'
+                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
+                                        # Cor do botão EDITAR
+                                        f'div[data-testid="stColumn"]:has(#em{pag_id}) button,'
+                                        f'div[data-testid="column"]:has(#em{pag_id}) button'
+                                        f'{{background:#1d4ed8!important;color:#fff!important;'
+                                        f'border:none!important;border-radius:8px!important;'
+                                        f'font-weight:700!important;font-size:.72rem!important;'
+                                        f'letter-spacing:.06em!important;}}'
+                                        f'div[data-testid="stColumn"]:has(#em{pag_id}) button:hover,'
+                                        f'div[data-testid="column"]:has(#em{pag_id}) button:hover'
+                                        f'{{background:#1e40af!important;'
+                                        f'box-shadow:0 0 0 3px rgba(59,130,246,.4)!important;}}'
                                         f'</style>'
-                                        f'<span id="em{pag_id}" hidden></span>',
+                                        f'<span id="em{pag_id}"></span>',
                                         unsafe_allow_html=True,
                                     )
                                     if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
@@ -1305,24 +1309,25 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
                                         st.session_state[ed_key] = True
                                         st.rerun()
-                                    # EXCLUIR — vermelho
+                                    # ── EXCLUIR — vermelho ─────────────────────
                                     rc[7].markdown(
                                         f'<style>'
-                                        f'div[data-testid="column"]:has(#dm{pag_id})'
-                                        f' div[data-testid="stButton"] button{{'
-                                        f'background:#dc2626 !important;'
-                                        f'color:#ffffff !important;'
-                                        f'border:none !important;'
-                                        f'border-radius:8px !important;'
-                                        f'font-weight:700 !important;'
-                                        f'font-size:.72rem !important;'
-                                        f'letter-spacing:.06em !important;}}'
-                                        f'div[data-testid="column"]:has(#dm{pag_id})'
-                                        f' div[data-testid="stButton"] button:hover{{'
-                                        f'background:#b91c1c !important;'
-                                        f'box-shadow:0 0 0 3px rgba(239,68,68,.45) !important;}}'
+                                        f'div[data-testid="stColumn"]:has(#dm{pag_id}) [data-testid="stMarkdown"],'
+                                        f'div[data-testid="column"]:has(#dm{pag_id}) [data-testid="stMarkdown"]'
+                                        f'{{height:0!important;overflow:hidden!important;'
+                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
+                                        f'div[data-testid="stColumn"]:has(#dm{pag_id}) button,'
+                                        f'div[data-testid="column"]:has(#dm{pag_id}) button'
+                                        f'{{background:#dc2626!important;color:#fff!important;'
+                                        f'border:none!important;border-radius:8px!important;'
+                                        f'font-weight:700!important;font-size:.72rem!important;'
+                                        f'letter-spacing:.06em!important;}}'
+                                        f'div[data-testid="stColumn"]:has(#dm{pag_id}) button:hover,'
+                                        f'div[data-testid="column"]:has(#dm{pag_id}) button:hover'
+                                        f'{{background:#b91c1c!important;'
+                                        f'box-shadow:0 0 0 3px rgba(239,68,68,.4)!important;}}'
                                         f'</style>'
-                                        f'<span id="dm{pag_id}" hidden></span>',
+                                        f'<span id="dm{pag_id}"></span>',
                                         unsafe_allow_html=True,
                                     )
                                     if rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
