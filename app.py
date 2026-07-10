@@ -1278,14 +1278,20 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[5].write(str(pr["observacao"] or ""))
                                 if is_ultimo:
                                     # ── EDITAR — azul ──────────────────────────
+                                    # ORDEM: button PRIMEIRO, markdown depois.
+                                    # Assim o botão fica no topo da coluna (alinhado com o texto),
+                                    # e o container da span — colapsado a 0 — aparece abaixo sem impacto visual.
+                                    if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
+                                                    use_container_width=True):
+                                        dt = pr["data_pagamento"]
+                                        st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
+                                        st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
+                                        st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
+                                        st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
+                                        st.session_state[ed_key] = True
+                                        st.rerun()
                                     rc[6].markdown(
                                         f'<style>'
-                                        # Colapsa o container da span (height 0 → não empurra o botão)
-                                        f'div[data-testid="stColumn"]:has(#em{pag_id}) [data-testid="stMarkdown"],'
-                                        f'div[data-testid="column"]:has(#em{pag_id}) [data-testid="stMarkdown"]'
-                                        f'{{height:0!important;overflow:hidden!important;'
-                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
-                                        # Cor do botão EDITAR
                                         f'div[data-testid="stColumn"]:has(#em{pag_id}) button,'
                                         f'div[data-testid="column"]:has(#em{pag_id}) button'
                                         f'{{background:#1d4ed8!important;color:#fff!important;'
@@ -1296,26 +1302,22 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         f'div[data-testid="column"]:has(#em{pag_id}) button:hover'
                                         f'{{background:#1e40af!important;'
                                         f'box-shadow:0 0 0 3px rgba(59,130,246,.4)!important;}}'
+                                        # Colapsa o container da span a zero (fica abaixo do botão, sem espaço)
+                                        f'div[data-testid="stColumn"]:has(#em{pag_id}) [data-testid="stMarkdown"],'
+                                        f'div[data-testid="column"]:has(#em{pag_id}) [data-testid="stMarkdown"]'
+                                        f'{{height:0!important;overflow:hidden!important;'
+                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
                                         f'</style>'
                                         f'<span id="em{pag_id}"></span>',
                                         unsafe_allow_html=True,
                                     )
-                                    if rc[6].button("EDITAR", key=f"btn_ed_{pag_id}",
-                                                    use_container_width=True):
-                                        dt = pr["data_pagamento"]
-                                        st.session_state[_sk["data"]]  = dt.date() if hasattr(dt, "date") else dt
-                                        st.session_state[_sk["val"]]   = brl_input(float(pr["valor_pago"] or 0))
-                                        st.session_state[_sk["obs"]]   = str(pr["observacao"] or "")
-                                        st.session_state[_sk["juros"]] = brl_input(float(pr["juros"] or 0))
-                                        st.session_state[ed_key] = True
-                                        st.rerun()
                                     # ── EXCLUIR — vermelho ─────────────────────
+                                    if rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
+                                                    use_container_width=True):
+                                        st.session_state[del_key] = True
+                                        st.rerun()
                                     rc[7].markdown(
                                         f'<style>'
-                                        f'div[data-testid="stColumn"]:has(#dm{pag_id}) [data-testid="stMarkdown"],'
-                                        f'div[data-testid="column"]:has(#dm{pag_id}) [data-testid="stMarkdown"]'
-                                        f'{{height:0!important;overflow:hidden!important;'
-                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
                                         f'div[data-testid="stColumn"]:has(#dm{pag_id}) button,'
                                         f'div[data-testid="column"]:has(#dm{pag_id}) button'
                                         f'{{background:#dc2626!important;color:#fff!important;'
@@ -1326,14 +1328,14 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                         f'div[data-testid="column"]:has(#dm{pag_id}) button:hover'
                                         f'{{background:#b91c1c!important;'
                                         f'box-shadow:0 0 0 3px rgba(239,68,68,.4)!important;}}'
+                                        f'div[data-testid="stColumn"]:has(#dm{pag_id}) [data-testid="stMarkdown"],'
+                                        f'div[data-testid="column"]:has(#dm{pag_id}) [data-testid="stMarkdown"]'
+                                        f'{{height:0!important;overflow:hidden!important;'
+                                        f'min-height:0!important;margin:0!important;padding:0!important;}}'
                                         f'</style>'
                                         f'<span id="dm{pag_id}"></span>',
                                         unsafe_allow_html=True,
                                     )
-                                    if rc[7].button("EXCLUIR", key=f"btn_del_{pag_id}",
-                                                    use_container_width=True):
-                                        st.session_state[del_key] = True
-                                        st.rerun()
 
                 st.markdown("")
 
