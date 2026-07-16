@@ -110,6 +110,133 @@ def sanitize_storage_key(nome: str) -> str:
     nome = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-zA-Z0-9._-]", "_", nome)
 
+
+# ─── Importação de planilhas de Empréstimos ("padrão Títulos") ────────────────
+def _cell_str(v) -> str:
+    return str(v).strip() if v is not None else ""
+
+def _to_float_imp(v) -> float:
+    if v is None or v == "":
+        return 0.0
+    if isinstance(v, (int, float)):
+        return round(float(v), 2)
+    try:
+        return round(float(str(v).replace(".", "").replace(",", ".")), 2)
+    except Exception:
+        return 0.0
+
+def _to_date_imp(v):
+    if isinstance(v, datetime):
+        return v.date()
+    if hasattr(v, "year") and hasattr(v, "month"):  # date
+        return v
+    return None
+
+def _to_dia_imp(v):
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        iv = int(v)
+        return iv if 1 <= iv <= 31 else None
+    return None
+
+def parse_planilha_titulos(file_bytes: bytes) -> dict:
+    """
+    Detecta e extrai tabelas no formato "Títulos" (usado nas planilhas de
+    Empréstimos Concedidos: colunas Títulos | Data Emp. | Valor Originário |
+    Saldo Devedor | Parcela Juros | Recorrência | Data Prevista, com uma
+    segunda tabela de pagamentos ao lado: Títulos | Data Pag. | Valor Pagamento).
+    Retorna {nome_aba: {"devedor_sugerido", "emprestimos", "pagamentos_raw"}}
+    apenas para as abas em que o formato foi reconhecido.
+    """
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+    resultado = {}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        header_row, title_col, pag_col = None, None, None
+        _scan_limit = min(ws.max_row, 15)
+        for r in range(1, _scan_limit + 1):
+            for c in range(1, ws.max_column + 1):
+                _v0 = _cell_str(ws.cell(row=r, column=c).value)
+                if _v0 != "Títulos":
+                    continue
+                _v1 = _cell_str(ws.cell(row=r, column=c + 1).value)
+                _v2 = _cell_str(ws.cell(row=r, column=c + 2).value)
+                if _v1 == "Data Emp." and _v2 == "Valor Originário" and title_col is None:
+                    header_row, title_col = r, c
+                elif _v1 == "Data Pag." and _v2 == "Valor Pagamento":
+                    pag_col = c
+        if header_row is None:
+            continue
+
+        # ── Nome do devedor sugerido: linha "Tabela Recebíveis/Empréstimos <Nome>" ──
+        devedor_sugerido = ""
+        for r in range(max(1, header_row - 3), header_row):
+            for c in range(1, ws.max_column + 1):
+                v = _cell_str(ws.cell(row=r, column=c).value)
+                m = re.search(r"Empréstimos\s+(.+)$", v)
+                if m:
+                    devedor_sugerido = m.group(1).strip()
+
+        # ── Empréstimos ──
+        emprestimos = []
+        for r in range(header_row + 1, ws.max_row + 1):
+            titulo = _cell_str(ws.cell(row=r, column=title_col).value)
+            if not titulo:
+                continue
+            emprestimos.append({
+                "titulo":          titulo,
+                "data_emprestimo": _to_date_imp(ws.cell(row=r, column=title_col + 1).value),
+                "valor_original":  _to_float_imp(ws.cell(row=r, column=title_col + 2).value),
+                "saldo_devedor":   _to_float_imp(ws.cell(row=r, column=title_col + 3).value),
+                "parcela_juros":   _to_float_imp(ws.cell(row=r, column=title_col + 4).value),
+                "recorrencia":     _cell_str(ws.cell(row=r, column=title_col + 5).value) or "Mensal",
+                "dia_vencimento":  _to_dia_imp(ws.cell(row=r, column=title_col + 6).value),
+            })
+
+        # ── Pagamentos (tabela ao lado, se existir) ──
+        pagamentos_raw = []
+        if pag_col:
+            for r in range(header_row + 1, ws.max_row + 1):
+                titulo_pag = _cell_str(ws.cell(row=r, column=pag_col).value)
+                if not titulo_pag:
+                    continue
+                pagamentos_raw.append({
+                    "titulo_pag":     titulo_pag,
+                    "data_pagamento": _to_date_imp(ws.cell(row=r, column=pag_col + 1).value),
+                    "valor_pago":     _to_float_imp(ws.cell(row=r, column=pag_col + 2).value),
+                })
+
+        if emprestimos:
+            resultado[sheet_name] = {
+                "devedor_sugerido": devedor_sugerido,
+                "emprestimos":      emprestimos,
+                "pagamentos_raw":   pagamentos_raw,
+            }
+    return resultado
+
+def match_pagamentos_titulos(titulos: list, pagamentos_raw: list) -> tuple:
+    """Concilia pagamentos_raw (titulo_pag) com a lista de títulos de empréstimo,
+    por igualdade exata e, como fallback, por substring (após remover 'Emp. ')."""
+    matched, sem_match = [], []
+    for p in pagamentos_raw:
+        tp = p["titulo_pag"]
+        alvo = None
+        if tp in titulos:
+            alvo = tp
+        else:
+            tp_strip = tp.replace("Emp. ", "").replace("Emp.", "").strip()
+            for t in titulos:
+                t_strip = t.replace("Emp. ", "").replace("Emp.", "").strip()
+                if tp_strip == t_strip or tp_strip in t_strip or t_strip in tp_strip:
+                    alvo = t
+                    break
+        if alvo:
+            matched.append({**p, "titulo_emprestimo": alvo})
+        else:
+            sem_match.append(p)
+    return matched, sem_match
+
 def pct(v, sign=True):
     if v is None: return "—"
     v = float(v)
@@ -1534,6 +1661,142 @@ def tab_emprestimos(emp: pd.DataFrame):
             <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # IMPORTAR PLANILHA DE EMPRÉSTIMOS (.xlsx no padrão "Títulos")
+        # ══════════════════════════════════════════════════════════════════════
+        with st.expander("📥 Importar Planilha de Empréstimos (.xlsx)"):
+            st.caption(
+                "Sobe uma planilha no padrão \"Títulos\" (colunas Títulos, Data Emp., "
+                "Valor Originário, Saldo Devedor, Parcela Juros...) e mostra uma prévia "
+                "para conferência antes de gravar no banco."
+            )
+            imp_file = st.file_uploader("Planilha (.xlsx)", type=["xlsx"], key="import_plan_upload")
+
+            if imp_file is not None:
+                _file_id = f"{imp_file.name}_{imp_file.size}"
+                if st.session_state.get("import_plan_file_id") != _file_id:
+                    try:
+                        st.session_state["import_plan_data"] = parse_planilha_titulos(imp_file.getvalue())
+                    except Exception as e:
+                        st.session_state["import_plan_data"] = {}
+                        st.error(f"Erro ao ler a planilha: {e}")
+                    st.session_state["import_plan_file_id"] = _file_id
+
+                _parsed = st.session_state.get("import_plan_data", {})
+                if not _parsed:
+                    st.warning(
+                        "Nenhuma aba no formato reconhecido foi encontrada nesta planilha. "
+                        "Use o campo \"📎 Documentos\" dentro do devedor para apenas anexar o arquivo."
+                    )
+                else:
+                    sel_sheet = st.selectbox(
+                        "Aba detectada", list(_parsed.keys()), key="import_plan_sheet_sel")
+                    _dados = _parsed[sel_sheet]
+
+                    st.markdown(f"**{len(_dados['emprestimos'])} empréstimo(s)** encontrados nesta aba. "
+                                "Revise/edite antes de importar:")
+                    df_emp_edit = st.data_editor(
+                        pd.DataFrame(_dados["emprestimos"]),
+                        key=f"import_emp_editor_{sel_sheet}",
+                        use_container_width=True, num_rows="dynamic", hide_index=True,
+                    )
+
+                    _titulos_atuais = [t for t in df_emp_edit["titulo"].tolist() if t]
+                    matched, sem_match = match_pagamentos_titulos(_titulos_atuais, _dados["pagamentos_raw"])
+                    _importaveis = [p for p in matched if p["data_pagamento"]]
+                    _avisos      = sem_match + [p for p in matched if not p["data_pagamento"]]
+
+                    st.markdown(
+                        f"**{len(_importaveis)} pagamento(s)** conciliados e prontos para importar"
+                        + (f" · **{len(_avisos)} sem correspondência/data** (não serão importados)"
+                           if _avisos else "") + "."
+                    )
+                    if _avisos:
+                        with st.expander(f"⚠️ {len(_avisos)} pagamento(s) que ficarão de fora"):
+                            st.dataframe(pd.DataFrame(_avisos), use_container_width=True, hide_index=True)
+
+                    st.markdown("---")
+                    _nomes_dev = devedores_df["nome"].tolist() if not devedores_df.empty else []
+                    _opts_dev  = ["➕ Novo devedor"] + _nomes_dev
+                    _sugestao  = _dados.get("devedor_sugerido", "")
+                    _default_idx = _opts_dev.index(_sugestao) if _sugestao in _nomes_dev else 0
+                    sel_dev_imp = st.selectbox("Devedor de destino", _opts_dev,
+                                                index=_default_idx, key="import_plan_devedor_sel")
+                    novo_nome_dev = ""
+                    if sel_dev_imp == "➕ Novo devedor":
+                        novo_nome_dev = st.text_input(
+                            "Nome do novo devedor", value=_sugestao, key="import_plan_devedor_novo")
+
+                    if st.button("✅ Confirmar Importação", type="primary",
+                                 use_container_width=True, key="btn_confirmar_import_plan"):
+                        _nome_final = novo_nome_dev.strip() if sel_dev_imp == "➕ Novo devedor" else sel_dev_imp
+                        if not _nome_final:
+                            st.error("Informe o nome do devedor.")
+                        elif df_emp_edit.empty:
+                            st.error("Nenhum empréstimo para importar.")
+                        else:
+                            try:
+                                if sel_dev_imp == "➕ Novo devedor":
+                                    res_dev = sb.table("devedores").insert({
+                                        "nome": _nome_final, "categoria": "", "ativo": True,
+                                    }).execute()
+                                    dev_id_imp = res_dev.data[0]["id"]
+                                else:
+                                    dev_id_imp = int(
+                                        devedores_df[devedores_df["nome"] == _nome_final].iloc[0]["id"])
+
+                                emp_id_map = {}
+                                for _, er in df_emp_edit.iterrows():
+                                    if not er.get("titulo"):
+                                        continue
+                                    _valor   = float(er["valor_original"] or 0)
+                                    _saldo   = float(er["saldo_devedor"] or 0)
+                                    _parcela = float(er["parcela_juros"] or 0)
+                                    _taxa    = round(_parcela / _valor, 6) if _valor > 0 and _parcela > 0 else 0.02
+                                    _dv      = er.get("dia_vencimento")
+                                    _de      = er.get("data_emprestimo")
+                                    res_e = sb.table("emprestimos_concedidos").insert({
+                                        "devedor_id":      dev_id_imp,
+                                        "titulo":          er["titulo"],
+                                        "data_emprestimo": str(_de) if _de and not pd.isna(_de) else None,
+                                        "valor_original":  round(_valor, 2),
+                                        "saldo_devedor":   round(_saldo, 2),
+                                        "taxa_juros":      _taxa,
+                                        "parcela_juros":   round(_parcela, 2),
+                                        "recorrencia":     er.get("recorrencia") or "Mensal",
+                                        "dia_vencimento":  int(_dv) if _dv and not pd.isna(_dv) else None,
+                                        "status":          "ativo" if _saldo > 0 else "quitado",
+                                    }).execute()
+                                    emp_id_map[er["titulo"]] = res_e.data[0]["id"]
+
+                                _n_pag_ok = 0
+                                for pg in _importaveis:
+                                    _eid = emp_id_map.get(pg["titulo_emprestimo"])
+                                    if _eid is None:
+                                        continue
+                                    sb.table("pagamentos_recebidos").insert({
+                                        "emprestimo_id":  _eid,
+                                        "data_pagamento": str(pg["data_pagamento"]),
+                                        "valor_pago":     round(float(pg["valor_pago"] or 0), 2),
+                                        "juros":          0,
+                                        "amortizacao":    round(float(pg["valor_pago"] or 0), 2),
+                                        "observacao":     "Importado da planilha",
+                                    }).execute()
+                                    _n_pag_ok += 1
+
+                                load_devedores.clear()
+                                load_emprestimos_concedidos.clear()
+                                load_pagamentos_recebidos.clear()
+                                for _k in ("import_plan_file_id", "import_plan_data"):
+                                    st.session_state.pop(_k, None)
+                                st.success(
+                                    f"Importado! {len(emp_id_map)} empréstimo(s) e "
+                                    f"{_n_pag_ok} pagamento(s) para **{_nome_final}**."
+                                )
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao importar: {e}")
 
         if devedores_df.empty:
             st.info("Nenhum devedor cadastrado ainda.")
