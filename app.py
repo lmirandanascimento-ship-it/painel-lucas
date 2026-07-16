@@ -1665,7 +1665,13 @@ def tab_emprestimos(emp: pd.DataFrame):
         # ══════════════════════════════════════════════════════════════════════
         # IMPORTAR PLANILHA DE EMPRÉSTIMOS (.xlsx no padrão "Títulos")
         # ══════════════════════════════════════════════════════════════════════
-        with st.expander("📥 Importar Planilha de Empréstimos (.xlsx)"):
+        _import_plan_pending_msg = st.session_state.get("import_plan_msg")
+        with st.expander("📥 Importar Planilha de Empréstimos (.xlsx)",
+                          expanded=bool(_import_plan_pending_msg)):
+            if _import_plan_pending_msg:
+                st.session_state.pop("import_plan_msg", None)
+                st.success(_import_plan_pending_msg)
+
             st.caption(
                 "Sobe uma planilha no padrão \"Títulos\" (colunas Títulos, Data Emp., "
                 "Valor Originário, Saldo Devedor, Parcela Juros...) e mostra uma prévia "
@@ -1737,7 +1743,14 @@ def tab_emprestimos(emp: pd.DataFrame):
                             st.error("Nenhum empréstimo para importar.")
                         else:
                             try:
-                                if sel_dev_imp == "➕ Novo devedor":
+                                # Reaproveita devedor existente com o mesmo nome (case/espaço-insensitive)
+                                # mesmo que o usuário tenha marcado "Novo devedor" — evita duplicatas.
+                                _match_existente = devedores_df[
+                                    devedores_df["nome"].str.strip().str.lower() == _nome_final.lower()
+                                ] if not devedores_df.empty else pd.DataFrame()
+                                if not _match_existente.empty:
+                                    dev_id_imp = int(_match_existente.iloc[0]["id"])
+                                elif sel_dev_imp == "➕ Novo devedor":
                                     res_dev = sb.table("devedores").insert({
                                         "nome": _nome_final, "categoria": "", "ativo": True,
                                     }).execute()
@@ -1788,9 +1801,14 @@ def tab_emprestimos(emp: pd.DataFrame):
                                 load_devedores.clear()
                                 load_emprestimos_concedidos.clear()
                                 load_pagamentos_recebidos.clear()
-                                for _k in ("import_plan_file_id", "import_plan_data"):
+                                # Limpa TAMBÉM o file_uploader (senão o Streamlit mantém o
+                                # arquivo "preso" no widget e ele é reprocessado/reimportado
+                                # nos reruns seguintes, criando devedores duplicados).
+                                for _k in ("import_plan_file_id", "import_plan_data",
+                                           "import_plan_upload", "import_plan_sheet_sel",
+                                           "import_plan_devedor_sel", "import_plan_devedor_novo"):
                                     st.session_state.pop(_k, None)
-                                st.success(
+                                st.session_state["import_plan_msg"] = (
                                     f"Importado! {len(emp_id_map)} empréstimo(s) e "
                                     f"{_n_pag_ok} pagamento(s) para **{_nome_final}**."
                                 )
