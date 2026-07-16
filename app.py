@@ -4,6 +4,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import yfinance as yf
+import re
+import unicodedata
 from datetime import datetime, date, timedelta
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
@@ -102,6 +104,11 @@ def parse_brl(s: str) -> float:
 def brl_md(v, sign=False) -> str:
     """brl() com $ escapado para uso seguro em st.markdown (evita LaTeX)."""
     return brl(v, sign=sign).replace("$", "&#36;")
+
+def sanitize_storage_key(nome: str) -> str:
+    """Remove acentos e caracteres não aceitos pelo Supabase Storage na key do objeto."""
+    nome = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", nome)
 
 def pct(v, sign=True):
     if v is None: return "—"
@@ -908,7 +915,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             for _f in up_files:
                 try:
                     _ext  = _f.name.rsplit(".", 1)[-1].lower()
-                    _path = f"{dev_id}/{int(datetime.now().timestamp() * 1000)}_{_f.name}"
+                    _path = f"{dev_id}/{int(datetime.now().timestamp() * 1000)}_{sanitize_storage_key(_f.name)}"
                     sb.storage.from_(DOCS_BUCKET).upload(
                         _path, _f.getvalue(),
                         {"content-type": _f.type or "application/octet-stream"},
