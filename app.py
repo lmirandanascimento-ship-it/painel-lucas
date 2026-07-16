@@ -19,6 +19,7 @@ VERDE2       = "#2D6A4F"
 OURO         = "#B8860B"
 CAPITAL_BASE = 684_160.69
 BRAPI_TOKEN  = "o1ikT8zCSyqQUkNYz224ho"
+DOCS_BUCKET  = "documentos-emprestimos"
 
 INTL_CLASSES = {"ETF USA", "REITs", "Stocks"}
 CLASS_COLORS = {
@@ -237,6 +238,18 @@ def load_pagamentos_recebidos(emprestimo_id: int = None) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(r.data)
     df["data_pagamento"] = pd.to_datetime(df["data_pagamento"])
+    return df
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_documentos(devedor_id: int = None) -> pd.DataFrame:
+    q = sb.table("documentos_emprestimos").select("*").order("created_at", desc=True)
+    if devedor_id:
+        q = q.eq("devedor_id", devedor_id)
+    r = q.execute()
+    if not r.data:
+        return pd.DataFrame()
+    df = pd.DataFrame(r.data)
+    df["created_at"] = pd.to_datetime(df["created_at"])
     return df
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -866,6 +879,73 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
         <div class='kpi-label'>✅ Total Recebido</div></div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Documentos (upload de PDF/CSV/XLSX) ───────────────────────────────────
+    with st.expander("📎 Documentos"):
+        try:
+            docs_d = load_documentos(dev_id)
+        except Exception as _doc_err:
+            docs_d = pd.DataFrame()
+            st.warning(f"⚠️ Não foi possível carregar documentos. ({_doc_err})")
+
+        up_files = st.file_uploader(
+            "Anexar arquivo(s)",
+            type=["pdf", "csv", "xlsx"],
+            accept_multiple_files=True,
+            key=f"upl_docs_{dev_id}",
+        )
+        if up_files and st.button("⬆️ Enviar", key=f"btn_upl_docs_{dev_id}", use_container_width=True):
+            _erros = []
+            for _f in up_files:
+                try:
+                    _ext  = _f.name.rsplit(".", 1)[-1].lower()
+                    _path = f"{dev_id}/{int(datetime.now().timestamp() * 1000)}_{_f.name}"
+                    sb.storage.from_(DOCS_BUCKET).upload(
+                        _path, _f.getvalue(),
+                        {"content-type": _f.type or "application/octet-stream"},
+                    )
+                    sb.table("documentos_emprestimos").insert({
+                        "devedor_id":    dev_id,
+                        "nome_arquivo":  _f.name,
+                        "storage_path":  _path,
+                        "tipo_arquivo":  _ext,
+                        "tamanho_bytes": _f.size,
+                    }).execute()
+                except Exception as e:
+                    _erros.append(f"{_f.name}: {e}")
+            load_documentos.clear()
+            if _erros:
+                st.error("Erro ao enviar: " + "; ".join(_erros))
+            else:
+                st.success(f"{len(up_files)} arquivo(s) enviado(s)!")
+            st.rerun()
+
+        if not docs_d.empty:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            for _, _doc in docs_d.iterrows():
+                _did      = int(_doc["id"])
+                _fname    = str(_doc["nome_arquivo"])
+                _fdate    = pd.to_datetime(_doc["created_at"]).strftime("%d/%m/%Y %H:%M")
+                _dc1, _dc2, _dc3, _dc4 = st.columns([3, 1.3, 0.9, 0.9])
+                _dc1.write(f"📄 {_fname}")
+                _dc2.write(_fdate)
+                try:
+                    _signed = sb.storage.from_(DOCS_BUCKET).create_signed_url(
+                        str(_doc["storage_path"]), 3600)
+                    _url = _signed.get("signedURL") or _signed.get("signedUrl") or ""
+                    _dc3.link_button("⬇️", _url, use_container_width=True)
+                except Exception:
+                    _dc3.write("—")
+                if _dc4.button("🗑️", key=f"btn_del_doc_{_did}", use_container_width=True):
+                    try:
+                        sb.storage.from_(DOCS_BUCKET).remove([str(_doc["storage_path"])])
+                        sb.table("documentos_emprestimos").delete().eq("id", _did).execute()
+                        load_documentos.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
+        elif not up_files:
+            st.caption("Nenhum documento anexado ainda. Formatos aceitos: PDF, CSV, XLSX.")
 
     # ── Contratos ativos — cards com barra de progresso ──────────────────────
     if not ativos_d.empty:
