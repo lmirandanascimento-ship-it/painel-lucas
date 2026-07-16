@@ -881,7 +881,16 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Documentos (upload de PDF/CSV/XLSX) ───────────────────────────────────
-    with st.expander("📎 Documentos"):
+    _docs_msg_key = f"docs_upload_msg_{dev_id}"
+    _docs_pending_msg = st.session_state.get(_docs_msg_key)
+    with st.expander("📎 Documentos", expanded=bool(_docs_pending_msg)):
+        if _docs_pending_msg:
+            st.session_state.pop(_docs_msg_key, None)
+            if _docs_pending_msg["ok"]:
+                st.success(_docs_pending_msg["text"])
+            else:
+                st.error(_docs_pending_msg["text"])
+
         try:
             docs_d = load_documentos(dev_id)
         except Exception as _doc_err:
@@ -915,9 +924,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     _erros.append(f"{_f.name}: {e}")
             load_documentos.clear()
             if _erros:
-                st.error("Erro ao enviar: " + "; ".join(_erros))
+                st.session_state[_docs_msg_key] = {
+                    "ok": False, "text": "Erro ao enviar: " + "; ".join(_erros)}
             else:
-                st.success(f"{len(up_files)} arquivo(s) enviado(s)!")
+                st.session_state[_docs_msg_key] = {
+                    "ok": True, "text": f"{len(up_files)} arquivo(s) enviado(s)!"}
             st.rerun()
 
         if not docs_d.empty:
