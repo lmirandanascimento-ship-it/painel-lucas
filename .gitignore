@@ -1,0 +1,18 @@
+# Credenciais locais — NUNCA commitar
+supabase_local.py
+
+# Arquivos gerados
+*.docx
+Dashboard_Lucas.html
+Snapshot_RV_Lucas_*.json
+Snapshot_RF_Lucas_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.DS_Store
+supabase_local_teste.py
+
+# Logs do script agendado
+.atualiza_carteira_rf.err
+.atualiza_carteira_rf.log
