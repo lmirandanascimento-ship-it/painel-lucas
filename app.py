@@ -2234,13 +2234,12 @@ def tab_emprestimos(emp: pd.DataFrame):
 # ─── TAB: INVESTIMENTOS ESCRITÓRIO ────────────────────────────────────────────
 def tab_escritorio(inv: pd.DataFrame):
     # ── KPIs ─────────────────────────────────────────────────────────────────
+    TAXA_ESCRITORIO = 0.01  # rendimento = sempre 1% do saldo do mês anterior
+
     def _form_novo_mes():
         with st.expander("➕ Lançar Novo Mês"):
             inv_plot2 = inv[inv["saldo_final"] > 0] if not inv.empty else inv
             ultimo_saldo = float(inv_plot2.iloc[-1]["saldo_final"]) if not inv_plot2.empty else 0.0
-            ultima_taxa  = (float(inv_plot2.iloc[-1]["taxa_mensal"])
-                             if not inv_plot2.empty and "taxa_mensal" in inv_plot2.columns
-                             else 0.01)
             c1m, c2m = st.columns(2)
             mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes",
                                       format="DD/MM/YYYY")
@@ -2250,13 +2249,13 @@ def tab_escritorio(inv: pd.DataFrame):
             valor_str = st.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
                                        help="Digite o valor no formato 5.000,00", key="em_valor")
             valor_v    = parse_brl(valor_str)
-            rend_v     = round(ultimo_saldo * ultima_taxa, 2)
+            rend_v     = round(ultimo_saldo * TAXA_ESCRITORIO, 2)
             saldo_calc = round(ultimo_saldo + valor_v + rend_v, 2)
             st.markdown(
                 f'<small style="color:#555">'
-                f'Rendimento do mês ({ultima_taxa*100:.2f}% s/ saldo anterior): <b>{brl_md(rend_v)}</b>'
+                f'Rendimento do mês (1% s/ saldo anterior de {brl_md(ultimo_saldo)}): <b>{brl_md(rend_v)}</b>'
                 f' &nbsp;·&nbsp; Saldo final: <b>{brl_md(saldo_calc)}</b>'
-                f' &nbsp;(último: {brl_md(ultimo_saldo)} + valor: {brl_md(valor_v)} + rend: {brl_md(rend_v)})'
+                f' &nbsp;(= último {brl_md(ultimo_saldo)} + valor {brl_md(valor_v)} + rend {brl_md(rend_v)})'
                 f'</small>',
                 unsafe_allow_html=True)
             if st.button("💾 Salvar Lançamento", key="btn_em", use_container_width=True, type="primary"):
@@ -2267,7 +2266,7 @@ def tab_escritorio(inv: pd.DataFrame):
                         "valor": round(valor_v, 2),
                         "rendimento": rend_v,
                         "saldo_final": saldo_calc,
-                        "taxa_mensal": ultima_taxa,
+                        "taxa_mensal": TAXA_ESCRITORIO,
                     }, on_conflict="mes").execute()
                     st.success("Lançamento salvo!")
                     load_investimentos.clear()
@@ -2344,31 +2343,38 @@ def tab_escritorio(inv: pd.DataFrame):
     # ── Lançar novo mês ───────────────────────────────────────────────────────
     _form_novo_mes()
 
-    # ── Editar lançamento existente ───────────────────────────────────────────
-    with st.expander("✏️ Editar Lançamento Existente"):
-        meses_disp = inv_plot["mes"].dt.strftime("%b/%Y").tolist()
-        mes_sel    = st.selectbox("Mês", meses_disp[::-1], key="ed_mes")
-        row_ed     = inv_plot[inv_plot["mes"].dt.strftime("%b/%Y") == mes_sel].iloc[0]
-        c1e, c2e   = st.columns(2)
-        ed_valor_str = c1e.text_input("Aporte (R$)", value=brl_input(float(row_ed["valor"])), key="ed_val")
-        ed_rend_str  = c2e.text_input("Rendimento (R$)", value=brl_input(float(row_ed["rendimento"])), key="ed_rend")
-        ed_saldo_str = st.text_input("Saldo Final (R$)", value=brl_input(float(row_ed["saldo_final"])), key="ed_saldo")
-        ed_valor  = parse_brl(ed_valor_str)
-        ed_rend   = parse_brl(ed_rend_str)
-        ed_saldo  = parse_brl(ed_saldo_str)
-        if st.button("💾 Salvar Edição", key="btn_ed", use_container_width=True):
-            try:
-                mes_str = row_ed["mes"].strftime("%Y-%m-01")
-                sb.table("investimentos_escritorio").update({
-                    "valor": round(ed_valor, 2),
-                    "rendimento": round(ed_rend, 2),
-                    "saldo_final": round(ed_saldo, 2),
-                }).eq("mes", mes_str).execute()
-                st.success("Lançamento atualizado!")
-                load_investimentos.clear()
+    # ── Excluir último lançamento ──────────────────────────────────────────────
+    with st.expander("🗑️ Excluir Último Lançamento"):
+        ultimo_lanc = inv_plot.iloc[-1]
+        st.caption(
+            f"Último lançamento: **{ultimo_lanc['mes'].strftime('%b/%Y')}** · "
+            f"Tipo: **{ultimo_lanc['tipo']}** · "
+            f"Saldo final: **{brl_md(float(ultimo_lanc['saldo_final']))}**"
+        )
+        if st.session_state.get("confirm_del_escritorio"):
+            st.warning(
+                f"Excluir o lançamento de {ultimo_lanc['mes'].strftime('%b/%Y')}? "
+                f"O saldo do Escritório volta a ser o do mês anterior."
+            )
+            dc1, dc2 = st.columns(2)
+            if dc1.button("✅ Confirmar exclusão", key="conf_del_escritorio",
+                          type="primary", use_container_width=True):
+                try:
+                    mes_str = ultimo_lanc["mes"].strftime("%Y-%m-01")
+                    sb.table("investimentos_escritorio").delete().eq("mes", mes_str).execute()
+                    st.session_state.pop("confirm_del_escritorio", None)
+                    load_investimentos.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao excluir: {e}")
+            if dc2.button("❌ Cancelar", key="canc_del_escritorio", use_container_width=True):
+                st.session_state.pop("confirm_del_escritorio", None)
                 st.rerun()
-            except Exception as e:
-                st.error(f"Erro: {e}")
+        else:
+            if st.button("🗑️ Excluir Último Lançamento", key="btn_del_escritorio",
+                         use_container_width=True):
+                st.session_state["confirm_del_escritorio"] = True
+                st.rerun()
 
     # ── Projeção Futura ───────────────────────────────────────────────────────
     with st.expander("📈 Projeção Futura"):
