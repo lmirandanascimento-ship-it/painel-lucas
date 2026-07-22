@@ -2248,14 +2248,17 @@ def tab_escritorio(inv: pd.DataFrame):
                                               "Outro"], key="em_tipo")
             valor_str = st.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
                                        help="Digite o valor no formato 5.000,00", key="em_valor")
-            valor_v    = parse_brl(valor_str)
-            rend_v     = round(ultimo_saldo * TAXA_ESCRITORIO, 2)
-            saldo_calc = round(ultimo_saldo + valor_v + rend_v, 2)
+            eh_retirada = (tipo_v == "Retirada / Pró-labore")
+            valor_v     = parse_brl(valor_str)
+            valor_efet  = -valor_v if eh_retirada else valor_v
+            rend_v      = round(ultimo_saldo * TAXA_ESCRITORIO, 2)
+            saldo_calc  = round(ultimo_saldo + valor_efet + rend_v, 2)
             st.markdown(
                 f'<small style="color:#555">'
                 f'Rendimento do mês (1% s/ saldo anterior de {brl_md(ultimo_saldo)}): <b>{brl_md(rend_v)}</b>'
                 f' &nbsp;·&nbsp; Saldo final: <b>{brl_md(saldo_calc)}</b>'
-                f' &nbsp;(= último {brl_md(ultimo_saldo)} + valor {brl_md(valor_v)} + rend {brl_md(rend_v)})'
+                f' &nbsp;(= último {brl_md(ultimo_saldo)} '
+                f'{"−" if eh_retirada else "+"} valor {brl_md(valor_v)} + rend {brl_md(rend_v)})'
                 f'</small>',
                 unsafe_allow_html=True)
             if st.button("💾 Salvar Lançamento", key="btn_em", use_container_width=True, type="primary"):
@@ -2263,7 +2266,7 @@ def tab_escritorio(inv: pd.DataFrame):
                     mes_str = mes_v.strftime("%Y-%m-01")
                     sb.table("investimentos_escritorio").upsert({
                         "mes": mes_str, "tipo": tipo_v,
-                        "valor": round(valor_v, 2),
+                        "valor": round(valor_efet, 2),
                         "rendimento": rend_v,
                         "saldo_final": saldo_calc,
                         "taxa_mensal": TAXA_ESCRITORIO,
