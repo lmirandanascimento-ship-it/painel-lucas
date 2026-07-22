@@ -1126,6 +1126,11 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 unsafe_allow_html=True)
 
             with st.form(key=f"form_pag_{dev_id}", clear_on_submit=True):
+                tipo_pag = st.radio(
+                    "Tipo de pagamento",
+                    ["Amortização (abate o saldo)", "Somente Juros (não abate o saldo)"],
+                    horizontal=True, key=f"tipo_pag_{dev_id}",
+                )
                 fp1, fp2 = st.columns(2)
                 valor_p_str = fp1.text_input("Valor recebido (R$)",
                                               value=brl_input(juros_p),
@@ -1142,41 +1147,58 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                     "✅ Confirmar Recebimento", type="primary", use_container_width=True)
 
             if submitted_pag:
+                eh_somente_juros = tipo_pag.startswith("Somente")
                 _hoje = date.today()
                 if data_p > _hoje:
                     st.error("❌ Data futura não permitida. Utilize uma data até hoje.")
                 elif data_p < _hoje - timedelta(days=365):
                     st.error("❌ Data muito antiga. O limite máximo é 1 ano no passado.")
                 else:
-                    # Amortização pura: o valor pago debita integralmente do saldo.
-                    # Juros do período ficam registrados como referência, sem abater do valor.
-                    amort_p      = valor_p
-                    novo_saldo_p = round(max(0.0, saldo_p - amort_p), 2)
-                    novo_juros_p = round(novo_saldo_p * taxa_p, 2)
+                    if eh_somente_juros:
+                        # Pagamento somente de juros: não abate o saldo devedor.
+                        amort_p      = 0.0
+                        novo_saldo_p = saldo_p
+                        novo_juros_p = juros_p
+                        juros_reg    = round(valor_p, 2)
+                    else:
+                        # Amortização pura: o valor pago debita integralmente do saldo.
+                        # Juros do período ficam registrados como referência, sem abater do valor.
+                        amort_p      = valor_p
+                        novo_saldo_p = round(max(0.0, saldo_p - amort_p), 2)
+                        novo_juros_p = round(novo_saldo_p * taxa_p, 2)
+                        juros_reg    = round(juros_p, 2)
                     try:
                         sb.table("pagamentos_recebidos").insert({
                             "emprestimo_id":  emp_id_p,
                             "data_pagamento": str(data_p),
                             "valor_pago":     round(valor_p, 2),
-                            "juros":          round(juros_p, 2),   # juros do período (referência)
-                            "amortizacao":    round(amort_p, 2),   # = valor_pago integral
+                            "juros":          juros_reg,
+                            "amortizacao":    round(amort_p, 2),
                             "saldo_antes":    round(saldo_p, 2),
-                            "saldo_depois":   novo_saldo_p,
+                            "saldo_depois":   round(novo_saldo_p, 2),
                             "observacao":     obs_p,
+                            "tipo":           "juros" if eh_somente_juros else "amortizacao",
                         }).execute()
-                        upd_p = {"saldo_devedor": novo_saldo_p, "parcela_juros": novo_juros_p}
-                        if novo_saldo_p == 0:
-                            upd_p["status"] = "quitado"
-                        sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
+                        if not eh_somente_juros:
+                            upd_p = {"saldo_devedor": novo_saldo_p, "parcela_juros": novo_juros_p}
+                            if novo_saldo_p == 0:
+                                upd_p["status"] = "quitado"
+                            sb.table("emprestimos_concedidos").update(upd_p).eq("id", emp_id_p).execute()
                         load_emprestimos_concedidos.clear()
                         load_pagamentos_recebidos.clear()
-                        st.success(
-                            f"✅ Recebimento registrado! "
-                            f"Contrato: **{sel_pag}** · "
-                            f"Amort.: **{brl(amort_p)}** · "
-                            f"Novo saldo: **{brl(novo_saldo_p)}**"
-                            + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
-                        )
+                        if eh_somente_juros:
+                            st.success(
+                                f"✅ Recebimento registrado! Contrato: **{sel_pag}** · "
+                                f"Somente juros: **{brl(valor_p)}** · Saldo devedor não alterado."
+                            )
+                        else:
+                            st.success(
+                                f"✅ Recebimento registrado! "
+                                f"Contrato: **{sel_pag}** · "
+                                f"Amort.: **{brl(amort_p)}** · "
+                                f"Novo saldo: **{brl(novo_saldo_p)}**"
+                                + (" 🎉 Quitado!" if novo_saldo_p == 0 else "")
+                            )
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao registrar: {e}")
@@ -1292,13 +1314,17 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                     st.error("❌ Data futura não permitida.")
                                 else:
                                     try:
-                                        novo_val_pago = round(parse_brl(st.session_state[_sk["val"]]), 2)
-                                        # 1. Atualiza o registro do pagamento (amort = valor_pago)
+                                        novo_val_pago  = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                        _eh_juros_edit = (pr.get("tipo", "amortizacao") == "juros")
+                                        # Pagamento "somente juros" nunca abate o saldo (amort = 0),
+                                        # mesmo após edição — preserva o tipo original do lançamento.
+                                        nova_amort = 0.0 if _eh_juros_edit else novo_val_pago
+                                        # 1. Atualiza o registro do pagamento
                                         sb.table("pagamentos_recebidos").update({
                                             "data_pagamento": str(st.session_state[_sk["data"]]),
                                             "valor_pago":     novo_val_pago,
                                             "juros":          round(parse_brl(st.session_state[_sk["juros"]]), 2),
-                                            "amortizacao":    novo_val_pago,
+                                            "amortizacao":    nova_amort,
                                             "observacao":     st.session_state[_sk["obs"]],
                                         }).eq("id", pag_id).execute()
                                         # 2. Recalcula saldo do contrato a partir de todas as amortizações
@@ -1373,6 +1399,8 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 # Contrato quitado: linha com marca d'água verde, sem botões
                                 _d   = pr["data_pagamento"].strftime("%d/%m/%Y")
                                 _obs = str(pr["observacao"] or "")
+                                if pr.get("tipo", "amortizacao") == "juros":
+                                    _obs = "🔵 Somente Juros" + (f" · {_obs}" if _obs else "")
                                 st.markdown(
                                     f"""<div style="
                                         display:grid;
@@ -1411,7 +1439,10 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                 rc[2].write(brl(pr["juros"]))
                                 rc[3].write(brl(pr["amortizacao"]))
                                 rc[4].write(brl(_sd))
-                                rc[5].write(str(pr["observacao"] or ""))
+                                _obs_c = str(pr["observacao"] or "")
+                                if pr.get("tipo", "amortizacao") == "juros":
+                                    _obs_c = "🔵 Somente Juros" + (f" · {_obs_c}" if _obs_c else "")
+                                rc[5].write(_obs_c)
                                 if is_ultimo:
                                     # ── EDITAR — azul ──────────────────────────
                                     # ORDEM: button PRIMEIRO, markdown depois.
