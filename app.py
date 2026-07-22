@@ -2240,7 +2240,9 @@ def tab_escritorio(inv: pd.DataFrame):
             ultimo_saldo = float(inv_plot2.iloc[-1]["saldo_final"]) if not inv_plot2.empty else 0.0
             c1m, c2m = st.columns(2)
             mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
-            tipo_v  = c2m.selectbox("Tipo", ["Aporte Mensal","Retirada","Ajuste","Outro"], key="em_tipo")
+            tipo_v  = c2m.selectbox("Tipo", ["Honorários", "Êxito", "Consultoria",
+                                              "Aporte de Sócio", "Retirada / Pró-labore",
+                                              "Outro"], key="em_tipo")
             valor_str = c1m.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
                                        help="Digite o valor no formato 5.000,00", key="em_valor")
             rend_str  = c2m.text_input("Rendimento do mês (R$)", value="0,00", placeholder="ex: 300,00",
