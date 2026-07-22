@@ -2238,31 +2238,36 @@ def tab_escritorio(inv: pd.DataFrame):
         with st.expander("➕ Lançar Novo Mês"):
             inv_plot2 = inv[inv["saldo_final"] > 0] if not inv.empty else inv
             ultimo_saldo = float(inv_plot2.iloc[-1]["saldo_final"]) if not inv_plot2.empty else 0.0
+            ultima_taxa  = (float(inv_plot2.iloc[-1]["taxa_mensal"])
+                             if not inv_plot2.empty and "taxa_mensal" in inv_plot2.columns
+                             else 0.01)
             c1m, c2m = st.columns(2)
-            mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes")
+            mes_v   = c1m.date_input("Mês de referência (dia 1)", key="em_mes",
+                                      format="DD/MM/YYYY")
             tipo_v  = c2m.selectbox("Tipo", ["Honorários", "Êxito", "Consultoria",
                                               "Aporte de Sócio", "Retirada / Pró-labore",
                                               "Outro"], key="em_tipo")
-            valor_str = c1m.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
+            valor_str = st.text_input("Valor (R$)", value="0,00", placeholder="ex: 5.000,00",
                                        help="Digite o valor no formato 5.000,00", key="em_valor")
-            rend_str  = c2m.text_input("Rendimento do mês (R$)", value="0,00", placeholder="ex: 300,00",
-                                       help="Digite o valor no formato 300,00", key="em_rend")
-            valor_v = parse_brl(valor_str)
-            rend_v  = parse_brl(rend_str)
-            saldo_calc = ultimo_saldo + valor_v + rend_v
+            valor_v    = parse_brl(valor_str)
+            rend_v     = round(ultimo_saldo * ultima_taxa, 2)
+            saldo_calc = round(ultimo_saldo + valor_v + rend_v, 2)
             st.markdown(
-                f'<small style="color:#555">Saldo calculado: <b>{brl(saldo_calc)}</b> &nbsp;(último: {brl(ultimo_saldo)} + aporte: {brl(valor_v)} + rend: {brl(rend_v)})</small>',
+                f'<small style="color:#555">'
+                f'Rendimento do mês ({ultima_taxa*100:.2f}% s/ saldo anterior): <b>{brl_md(rend_v)}</b>'
+                f' &nbsp;·&nbsp; Saldo final: <b>{brl_md(saldo_calc)}</b>'
+                f' &nbsp;(último: {brl_md(ultimo_saldo)} + valor: {brl_md(valor_v)} + rend: {brl_md(rend_v)})'
+                f'</small>',
                 unsafe_allow_html=True)
-            saldo_manual = st.number_input("Saldo final (confirmado)", value=saldo_calc,
-                                           step=1.0, format="%.2f", key="em_saldo_final")
             if st.button("💾 Salvar Lançamento", key="btn_em", use_container_width=True, type="primary"):
                 try:
                     mes_str = mes_v.strftime("%Y-%m-01")
                     sb.table("investimentos_escritorio").upsert({
                         "mes": mes_str, "tipo": tipo_v,
                         "valor": round(valor_v, 2),
-                        "rendimento": round(rend_v, 2),
-                        "saldo_final": round(saldo_manual, 2),
+                        "rendimento": rend_v,
+                        "saldo_final": saldo_calc,
+                        "taxa_mensal": ultima_taxa,
                     }, on_conflict="mes").execute()
                     st.success("Lançamento salvo!")
                     load_investimentos.clear()
