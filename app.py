@@ -21,8 +21,6 @@ VERDE2       = "#2D6A4F"
 OURO         = "#B8860B"
 CAPITAL_BASE = 684_160.69
 BRAPI_TOKEN  = "o1ikT8zCSyqQUkNYz224ho"
-DOCS_BUCKET  = "documentos-emprestimos"
-
 INTL_CLASSES = {"ETF USA", "REITs", "Stocks"}
 CLASS_COLORS = {
     "Ações BR": "#22C55E", "ETF BR": "#16A34A", "FII": "#3B82F6",
@@ -104,12 +102,6 @@ def parse_brl(s: str) -> float:
 def brl_md(v, sign=False) -> str:
     """brl() com $ escapado para uso seguro em st.markdown (evita LaTeX)."""
     return brl(v, sign=sign).replace("$", "&#36;")
-
-def sanitize_storage_key(nome: str) -> str:
-    """Remove acentos e caracteres não aceitos pelo Supabase Storage na key do objeto."""
-    nome = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-zA-Z0-9._-]", "_", nome)
-
 
 # ─── Importação de planilhas de Empréstimos ("padrão Títulos") ────────────────
 def _cell_str(v) -> str:
@@ -372,18 +364,6 @@ def load_pagamentos_recebidos(emprestimo_id: int = None) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(r.data)
     df["data_pagamento"] = pd.to_datetime(df["data_pagamento"])
-    return df
-
-@st.cache_data(ttl=300, show_spinner=False)
-def load_documentos(devedor_id: int = None) -> pd.DataFrame:
-    q = sb.table("documentos_emprestimos").select("*").order("created_at", desc=True)
-    if devedor_id:
-        q = q.eq("devedor_id", devedor_id)
-    r = q.execute()
-    if not r.data:
-        return pd.DataFrame()
-    df = pd.DataFrame(r.data)
-    df["created_at"] = pd.to_datetime(df["created_at"])
     return df
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1014,84 +994,6 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Documentos (upload de PDF/CSV/XLSX) ───────────────────────────────────
-    _docs_msg_key = f"docs_upload_msg_{dev_id}"
-    _docs_pending_msg = st.session_state.get(_docs_msg_key)
-    with st.expander("📎 Documentos", expanded=bool(_docs_pending_msg)):
-        if _docs_pending_msg:
-            st.session_state.pop(_docs_msg_key, None)
-            if _docs_pending_msg["ok"]:
-                st.success(_docs_pending_msg["text"])
-            else:
-                st.error(_docs_pending_msg["text"])
-
-        try:
-            docs_d = load_documentos(dev_id)
-        except Exception as _doc_err:
-            docs_d = pd.DataFrame()
-            st.warning(f"⚠️ Não foi possível carregar documentos. ({_doc_err})")
-
-        up_files = st.file_uploader(
-            "Anexar arquivo(s)",
-            type=["pdf", "csv", "xlsx"],
-            accept_multiple_files=True,
-            key=f"upl_docs_{dev_id}",
-        )
-        if up_files and st.button("⬆️ Enviar", key=f"btn_upl_docs_{dev_id}", use_container_width=True):
-            _erros = []
-            for _f in up_files:
-                try:
-                    _ext  = _f.name.rsplit(".", 1)[-1].lower()
-                    _path = f"{dev_id}/{int(datetime.now().timestamp() * 1000)}_{sanitize_storage_key(_f.name)}"
-                    sb.storage.from_(DOCS_BUCKET).upload(
-                        _path, _f.getvalue(),
-                        {"content-type": _f.type or "application/octet-stream"},
-                    )
-                    sb.table("documentos_emprestimos").insert({
-                        "devedor_id":    dev_id,
-                        "nome_arquivo":  _f.name,
-                        "storage_path":  _path,
-                        "tipo_arquivo":  _ext,
-                        "tamanho_bytes": _f.size,
-                    }).execute()
-                except Exception as e:
-                    _erros.append(f"{_f.name}: {e}")
-            load_documentos.clear()
-            if _erros:
-                st.session_state[_docs_msg_key] = {
-                    "ok": False, "text": "Erro ao enviar: " + "; ".join(_erros)}
-            else:
-                st.session_state[_docs_msg_key] = {
-                    "ok": True, "text": f"{len(up_files)} arquivo(s) enviado(s)!"}
-            st.rerun()
-
-        if not docs_d.empty:
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            for _, _doc in docs_d.iterrows():
-                _did      = int(_doc["id"])
-                _fname    = str(_doc["nome_arquivo"])
-                _fdate    = pd.to_datetime(_doc["created_at"]).strftime("%d/%m/%Y %H:%M")
-                _dc1, _dc2, _dc3, _dc4 = st.columns([3, 1.3, 0.9, 0.9])
-                _dc1.write(f"📄 {_fname}")
-                _dc2.write(_fdate)
-                try:
-                    _signed = sb.storage.from_(DOCS_BUCKET).create_signed_url(
-                        str(_doc["storage_path"]), 3600)
-                    _url = _signed.get("signedURL") or _signed.get("signedUrl") or ""
-                    _dc3.link_button("⬇️", _url, use_container_width=True)
-                except Exception:
-                    _dc3.write("—")
-                if _dc4.button("🗑️", key=f"btn_del_doc_{_did}", use_container_width=True):
-                    try:
-                        sb.storage.from_(DOCS_BUCKET).remove([str(_doc["storage_path"])])
-                        sb.table("documentos_emprestimos").delete().eq("id", _did).execute()
-                        load_documentos.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao excluir: {e}")
-        elif not up_files:
-            st.caption("Nenhum documento anexado ainda. Formatos aceitos: PDF, CSV, XLSX.")
-
     # ── Contratos ativos — cards com barra de progresso ──────────────────────
     if not ativos_d.empty:
         st.markdown(
@@ -1693,7 +1595,7 @@ def tab_emprestimos(emp: pd.DataFrame):
                 if not _parsed:
                     st.warning(
                         "Nenhuma aba no formato reconhecido foi encontrada nesta planilha. "
-                        "Use o campo \"📎 Documentos\" dentro do devedor para apenas anexar o arquivo."
+                        "Use o importador de planilhas para carregar contratos."
                     )
                 else:
                     sel_sheet = st.selectbox(
