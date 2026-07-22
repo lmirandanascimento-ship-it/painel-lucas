@@ -1920,32 +1920,283 @@ def tab_emprestimos(emp: pd.DataFrame):
 
             _form_novo()
 
-            with st.expander("📜 Histórico de Pagamentos"):
+            def _fmt_data_me(v):
+                try:
+                    return datetime.strptime(str(v), "%Y-%m-%d").strftime("%d/%m/%Y")
+                except Exception:
+                    return str(v or "—")
+
+            _hist_has_active_me = any(
+                v for k, v in st.session_state.items()
+                if k.startswith("editing_me_") or k.startswith("confirm_del_me_")
+            )
+            with st.expander("📜 Histórico de Pagamentos por Contrato",
+                             expanded=_hist_has_active_me):
                 try:
                     todos_emp = sb.table("emprestimos").select(
-                        "titulo,credor,historico_pagamentos").execute()
-                    tem_hist = False
-                    for r_h in (todos_emp.data or []):
+                        "id,titulo,credor,status,saldo_devedor,taxa_juros,historico_pagamentos"
+                    ).execute()
+                except Exception as e:
+                    st.error(f"⚠️ Erro ao carregar histórico. ({e})")
+                    todos_emp = None
+
+                tem_hist = False
+                if todos_emp and todos_emp.data:
+                    for r_h in todos_emp.data:
                         hist_rows = r_h.get("historico_pagamentos") or []
                         if not hist_rows:
                             continue
                         tem_hist = True
-                        st.markdown(f"**{r_h['titulo']}** — {r_h['credor']}")
-                        df_h2 = pd.DataFrame(hist_rows)
-                        rename_map2 = {"data":"Data","valor_pago":"Valor Pago","juros":"Juros",
-                                       "amortizacao":"Amortização","saldo_antes":"Saldo Antes",
-                                       "saldo_depois":"Saldo Depois","obs":"Obs"}
-                        df_h2 = df_h2.rename(columns=rename_map2)
-                        for col_m in ["Valor Pago","Juros","Amortização","Saldo Antes","Saldo Depois"]:
-                            if col_m in df_h2.columns:
-                                df_h2[col_m] = df_h2[col_m].apply(brl)
-                        if "Data" in df_h2.columns:
-                            df_h2 = df_h2.sort_values("Data", ascending=False)
-                        st.dataframe(df_h2, use_container_width=True, hide_index=True)
-                    if not tem_hist:
-                        st.info("Nenhum pagamento via sistema ainda.")
-                except Exception:
-                    st.info("Histórico não disponível.")
+                        eid      = r_h["id"]
+                        status_c = r_h.get("status", "ativo")
+                        saldo_c  = float(r_h.get("saldo_devedor") or 0)
+                        taxa_c   = float(r_h.get("taxa_juros") or 0)
+                        is_quitado_c = (status_c == "quitado") or (saldo_c <= 0)
+
+                        # Lista é append-only (novos pagamentos sempre no final),
+                        # então o último índice é sempre o pagamento mais recente.
+                        _indexed   = list(enumerate(hist_rows))[::-1]
+                        ultimo_idx = -1 if is_quitado_c else (len(hist_rows) - 1)
+
+                        with st.container(border=True):
+                            badge_c      = "✅" if is_quitado_c else "📋"
+                            total_pago_c = sum(float(h.get("valor_pago") or 0) for h in hist_rows)
+                            st.markdown(
+                                f"<b>{badge_c} {r_h['titulo']}</b>"
+                                f"<span style='color:#666;font-size:0.85em'>"
+                                f" &nbsp;·&nbsp; {r_h.get('credor','')}"
+                                f" &nbsp;·&nbsp; {len(hist_rows)} pagamento(s)"
+                                f" &nbsp;·&nbsp; Total pago: <b>{brl_md(total_pago_c)}</b>"
+                                f" &nbsp;·&nbsp; Saldo atual: <b>{brl_md(saldo_c)}</b>"
+                                f"</span>",
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown("")
+
+                            _GCOLS_ME = "1.4fr 1.4fr 1.1fr 1.4fr 1.5fr 2.0fr 0.85fr 0.85fr"
+                            st.markdown(
+                                f'<div style="display:grid;grid-template-columns:{_GCOLS_ME};'
+                                f'gap:6px;padding:4px 4px 2px 4px;font-size:0.82em;font-weight:700;">'
+                                f'<span>Data de Pagamento</span><span>Valor Pago</span>'
+                                f'<span>Juros</span><span>Amortização</span>'
+                                f'<span>Saldo Após</span><span>Obs</span>'
+                                f'<span></span><span></span></div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.divider()
+
+                            for idx, hp in _indexed:
+                                key       = f"{eid}_{idx}"
+                                ed_key    = f"editing_me_{key}"
+                                del_key   = f"confirm_del_me_{key}"
+                                is_ultimo = (idx == ultimo_idx)
+
+                                _sk = {
+                                    "data":  f"sv_data_me_{key}",
+                                    "val":   f"sv_val_me_{key}",
+                                    "obs":   f"sv_obs_me_{key}",
+                                    "juros": f"sv_juros_me_{key}",
+                                }
+
+                                # ── Estados mutuamente exclusivos: edit > delete > normal ──
+                                if st.session_state.get(ed_key):
+                                    fe1, fe2, fe3, fe4 = st.columns(4)
+                                    try:
+                                        _pag_date = datetime.strptime(str(hp.get("data")), "%Y-%m-%d").date()
+                                    except Exception:
+                                        _pag_date = date.today()
+                                    _min_date = min(date.today() - timedelta(days=365*10), _pag_date)
+                                    fe1.date_input("Data", key=_sk["data"], format="DD/MM/YYYY",
+                                                   min_value=_min_date, max_value=date.today())
+                                    fe2.text_input("Valor pago (R$)", key=_sk["val"])
+                                    fe3.text_input("Juros ref. (R$)", key=_sk["juros"])
+                                    fe4.text_input("Observação", key=_sk["obs"])
+                                    fc1, fc2 = st.columns(2)
+
+                                    if fc1.button("💾 Salvar", key=f"btn_save_me_{key}",
+                                                  type="primary", use_container_width=True):
+                                        _data_edit = st.session_state.get(_sk["data"])
+                                        _hoje_e    = date.today()
+                                        if _data_edit and _data_edit > _hoje_e:
+                                            st.error("❌ Data futura não permitida.")
+                                        else:
+                                            try:
+                                                novo_val_pago  = round(parse_brl(st.session_state[_sk["val"]]), 2)
+                                                juros_digitado = round(parse_brl(st.session_state[_sk["juros"]]), 2)
+                                                juros_aplicado = round(min(novo_val_pago, max(0.0, juros_digitado)), 2)
+                                                nova_amort     = round(max(0.0, novo_val_pago - juros_aplicado), 2)
+                                                saldo_antes_e  = float(hp.get("saldo_antes") or 0)
+                                                novo_saldo_e   = round(max(0.0, saldo_antes_e - nova_amort), 2)
+
+                                                # Relê o array atual (evita sobrescrever concorrência)
+                                                res_cur = sb.table("emprestimos").select(
+                                                    "historico_pagamentos").eq("id", eid).execute()
+                                                hist_atual = (res_cur.data[0].get("historico_pagamentos") or []) \
+                                                             if res_cur.data else []
+                                                if idx < len(hist_atual):
+                                                    hist_atual[idx] = {
+                                                        "data":         str(_data_edit),
+                                                        "valor_pago":   novo_val_pago,
+                                                        "juros":        juros_aplicado,
+                                                        "amortizacao":  nova_amort,
+                                                        "saldo_antes":  round(saldo_antes_e, 2),
+                                                        "saldo_depois": novo_saldo_e,
+                                                        "obs":          st.session_state[_sk["obs"]],
+                                                    }
+                                                novo_parcela_e = round(novo_saldo_e * taxa_c, 2)
+                                                upd_e = {
+                                                    "historico_pagamentos": hist_atual,
+                                                    "saldo_devedor": novo_saldo_e,
+                                                    "parcela_juros": novo_parcela_e,
+                                                    "status": "quitado" if novo_saldo_e <= 0 else "ativo",
+                                                }
+                                                sb.table("emprestimos").update(upd_e).eq("id", eid).execute()
+                                                for k in [ed_key] + list(_sk.values()):
+                                                    st.session_state.pop(k, None)
+                                                load_emprestimos.clear()
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao salvar: {e}")
+
+                                    if fc2.button("❌ Cancelar", key=f"btn_canc_me_{key}",
+                                                  use_container_width=True):
+                                        for k in [ed_key] + list(_sk.values()):
+                                            st.session_state.pop(k, None)
+                                        st.rerun()
+
+                                elif st.session_state.get(del_key):
+                                    st.warning(
+                                        f"Excluir pagamento de **{brl(hp.get('valor_pago'))}** "
+                                        f"em {_fmt_data_me(hp.get('data'))}?"
+                                    )
+                                    dc1, dc2 = st.columns(2)
+                                    if dc1.button("✅ Confirmar exclusão", key=f"conf_del_me_{key}", type="primary"):
+                                        try:
+                                            res_cur = sb.table("emprestimos").select(
+                                                "historico_pagamentos").eq("id", eid).execute()
+                                            hist_atual = (res_cur.data[0].get("historico_pagamentos") or []) \
+                                                         if res_cur.data else []
+                                            _removido = hist_atual.pop(idx) if idx < len(hist_atual) else hp
+                                            novo_saldo_d   = round(float(_removido.get("saldo_antes") or 0), 2)
+                                            novo_parcela_d = round(novo_saldo_d * taxa_c, 2)
+                                            upd_d = {
+                                                "historico_pagamentos": hist_atual,
+                                                "saldo_devedor": novo_saldo_d,
+                                                "parcela_juros": novo_parcela_d,
+                                                "status": "quitado" if novo_saldo_d <= 0 else "ativo",
+                                            }
+                                            sb.table("emprestimos").update(upd_d).eq("id", eid).execute()
+                                            st.session_state.pop(del_key, None)
+                                            load_emprestimos.clear()
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir: {e}")
+                                    if dc2.button("❌ Cancelar", key=f"canc_del_me_{key}"):
+                                        st.session_state.pop(del_key, None)
+                                        st.rerun()
+
+                                else:
+                                    if is_quitado_c:
+                                        _d   = _fmt_data_me(hp.get("data"))
+                                        _obs = str(hp.get("obs") or "")
+                                        st.markdown(
+                                            f"""<div style="
+                                                display:grid;
+                                                grid-template-columns:1.4fr 1.4fr 1.2fr 1.4fr 1.6fr 2.4fr 0.7fr;
+                                                gap:6px;
+                                                background:rgba(40,167,69,0.08);
+                                                border-radius:6px;
+                                                padding:6px 10px;
+                                                align-items:center;
+                                                margin-bottom:4px;
+                                                font-size:0.88em;
+                                            ">
+                                                <span>{_d}</span>
+                                                <span>{brl(hp.get('valor_pago'))}</span>
+                                                <span>{brl(hp.get('juros'))}</span>
+                                                <span>{brl(hp.get('amortizacao'))}</span>
+                                                <span>{brl(hp.get('saldo_depois'))}</span>
+                                                <span style="color:#666">{_obs}</span>
+                                                <span style="
+                                                    color:#28a745;font-weight:700;
+                                                    font-size:0.75em;letter-spacing:0.08em;
+                                                    opacity:0.65;text-align:right;
+                                                ">✓&nbsp;QUITADO</span>
+                                            </div>""",
+                                            unsafe_allow_html=True,
+                                        )
+                                    else:
+                                        rc = st.columns([1.4, 1.4, 1.1, 1.4, 1.5, 2.0, 0.85, 0.85])
+                                        rc[0].write(_fmt_data_me(hp.get("data")))
+                                        rc[1].write(brl(hp.get("valor_pago")))
+                                        rc[2].write(brl(hp.get("juros")))
+                                        rc[3].write(brl(hp.get("amortizacao")))
+                                        rc[4].write(brl(hp.get("saldo_depois")))
+                                        rc[5].write(str(hp.get("obs") or ""))
+                                        if is_ultimo:
+                                            # ── EDITAR — azul ──────────────────────────
+                                            if rc[6].button("EDITAR", key=f"btn_ed_me_{key}",
+                                                            use_container_width=True):
+                                                try:
+                                                    _dt_me = datetime.strptime(
+                                                        str(hp.get("data")), "%Y-%m-%d").date()
+                                                except Exception:
+                                                    _dt_me = date.today()
+                                                st.session_state[_sk["data"]]  = _dt_me
+                                                st.session_state[_sk["val"]]   = brl_input(float(hp.get("valor_pago") or 0))
+                                                st.session_state[_sk["obs"]]   = str(hp.get("obs") or "")
+                                                st.session_state[_sk["juros"]] = brl_input(float(hp.get("juros") or 0))
+                                                st.session_state[ed_key] = True
+                                                st.rerun()
+                                            rc[6].markdown(
+                                                f'<style>'
+                                                f'div[data-testid="stColumn"]:has(#meEm{key}) button,'
+                                                f'div[data-testid="column"]:has(#meEm{key}) button'
+                                                f'{{background:#1d4ed8!important;color:#fff!important;'
+                                                f'border:none!important;border-radius:8px!important;'
+                                                f'font-weight:700!important;font-size:.72rem!important;'
+                                                f'letter-spacing:.06em!important;}}'
+                                                f'div[data-testid="stColumn"]:has(#meEm{key}) button:hover,'
+                                                f'div[data-testid="column"]:has(#meEm{key}) button:hover'
+                                                f'{{background:#1e40af!important;'
+                                                f'box-shadow:0 0 0 3px rgba(59,130,246,.4)!important;}}'
+                                                f'div[data-testid="stColumn"]:has(#meEm{key}) [data-testid="stMarkdown"],'
+                                                f'div[data-testid="column"]:has(#meEm{key}) [data-testid="stMarkdown"]'
+                                                f'{{height:0!important;overflow:hidden!important;'
+                                                f'min-height:0!important;margin:0!important;padding:0!important;}}'
+                                                f'</style>'
+                                                f'<span id="meEm{key}"></span>',
+                                                unsafe_allow_html=True,
+                                            )
+                                            # ── EXCLUIR — vermelho ─────────────────────
+                                            if rc[7].button("EXCLUIR", key=f"btn_del_me_{key}",
+                                                            use_container_width=True):
+                                                st.session_state[del_key] = True
+                                                st.rerun()
+                                            rc[7].markdown(
+                                                f'<style>'
+                                                f'div[data-testid="stColumn"]:has(#meDm{key}) button,'
+                                                f'div[data-testid="column"]:has(#meDm{key}) button'
+                                                f'{{background:#dc2626!important;color:#fff!important;'
+                                                f'border:none!important;border-radius:8px!important;'
+                                                f'font-weight:700!important;font-size:.72rem!important;'
+                                                f'letter-spacing:.06em!important;}}'
+                                                f'div[data-testid="stColumn"]:has(#meDm{key}) button:hover,'
+                                                f'div[data-testid="column"]:has(#meDm{key}) button:hover'
+                                                f'{{background:#b91c1c!important;'
+                                                f'box-shadow:0 0 0 3px rgba(239,68,68,.4)!important;}}'
+                                                f'div[data-testid="stColumn"]:has(#meDm{key}) [data-testid="stMarkdown"],'
+                                                f'div[data-testid="column"]:has(#meDm{key}) [data-testid="stMarkdown"]'
+                                                f'{{height:0!important;overflow:hidden!important;'
+                                                f'min-height:0!important;margin:0!important;padding:0!important;}}'
+                                                f'</style>'
+                                                f'<span id="meDm{key}"></span>',
+                                                unsafe_allow_html=True,
+                                            )
+                        st.markdown("")
+
+                if not tem_hist:
+                    st.info("Nenhum pagamento via sistema ainda.")
 
 
 
