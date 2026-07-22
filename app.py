@@ -1269,7 +1269,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                         _cum = 0.0
                         for _, _p in _asc.iterrows():
                             _cum += float(_p.get("amortizacao") or 0)
-                            if _p["saldo_depois"] != _p["saldo_depois"]:  # NaN = NULL no banco
+                            if pd.isna(_p["saldo_depois"]):  # cobre None e NaN — coluna vem como dtype object quando só há NULLs
                                 _saldo_retro[int(_p["id"])] = round(max(0.0, val_orig - _cum), 2)
 
                     for _, pr in pagtos_c.iterrows():
