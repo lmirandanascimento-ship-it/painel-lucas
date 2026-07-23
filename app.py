@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import requests
 import yfinance as yf
 import re
+import os
 import unicodedata
 from datetime import datetime, date, timedelta
 
@@ -65,9 +66,17 @@ st.markdown(f"""
 
 
 # ─── Supabase ─────────────────────────────────────────────────────────────────
+def _secret(key: str):
+    """Lê de st.secrets (Streamlit Cloud) com fallback para variável de ambiente
+    (Railway, VPS ou qualquer host que não use .streamlit/secrets.toml)."""
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.environ.get(key)
+
 @st.cache_resource
 def get_sb():
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    return create_client(_secret("SUPABASE_URL"), _secret("SUPABASE_KEY"))
 
 sb = get_sb()
 
