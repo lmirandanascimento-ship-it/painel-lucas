@@ -259,6 +259,7 @@ def html_pct(v):
 def pagina_login():
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
+        st.caption(f"🔧 debug: SUPABASE_URL = {_secret('SUPABASE_URL')!r}")
         st.markdown(f"""
         <div style='text-align:center; padding:40px 0 20px'>
             <h1 style='color:{VERDE}; font-size:2rem; margin-bottom:4px'>3P FINANÇAS</h1>
