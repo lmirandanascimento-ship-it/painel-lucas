@@ -259,7 +259,12 @@ def html_pct(v):
 def pagina_login():
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        st.caption(f"🔧 debug: SUPABASE_URL = {_secret('SUPABASE_URL')!r}")
+        _dbg_url = _secret("SUPABASE_URL") or ""
+        _dbg_key = _secret("SUPABASE_KEY") or ""
+        _dbg_key_masked = (f"{_dbg_key[:6]}...{_dbg_key[-6:]} (len={len(_dbg_key)})"
+                            if _dbg_key else "(vazia/None)")
+        st.caption(f"🔧 debug: SUPABASE_URL = {_dbg_url!r}")
+        st.caption(f"🔧 debug: SUPABASE_KEY = {_dbg_key_masked}")
         st.markdown(f"""
         <div style='text-align:center; padding:40px 0 20px'>
             <h1 style='color:{VERDE}; font-size:2rem; margin-bottom:4px'>3P FINANÇAS</h1>
