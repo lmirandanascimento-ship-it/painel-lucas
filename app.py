@@ -278,8 +278,8 @@ def pagina_login():
                 r = sb.auth.sign_in_with_password({"email": email, "password": senha})
                 st.session_state["user"] = r.user
                 st.rerun()
-            except Exception:
-                st.error("E-mail ou senha incorretos.")
+            except Exception as e:
+                st.error(f"Não foi possível entrar — motivo real: {e}")
 
 
 # ─── Carga de dados ───────────────────────────────────────────────────────────
