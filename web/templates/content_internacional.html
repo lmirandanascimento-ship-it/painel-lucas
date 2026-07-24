@@ -1,0 +1,42 @@
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "" }}</b></div>
+</div>
+<h1 class="hello">🌍 Internacional — {{ classe }}</h1>
+
+<div class="card">
+  {% if vazio %}
+    <p style="color:var(--muted)">Sem posições.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ativo</th><th>Setor</th><th>Qtd</th><th>PM (US$)</th><th>Cotação (US$)</th>
+              <th>Investido (US$)</th><th>Posição (US$)</th><th>Ganho (US$)</th><th>%</th>
+              <th>Posição (R$) est.</th></tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+            <tr>
+              <td><b>{{ l.ativo }}</b></td><td>{{ l.setor }}</td><td>{{ l.qtd }}</td>
+              <td>{{ l.pm }}</td><td>{{ l.cotacao }}</td><td>{{ l.investido }}</td>
+              <td>{{ l.posicao }}</td><td>{{ l.ganho }}</td><td>{{ l.pct }}</td>
+              <td>{{ l.posicao_r_est }}</td>
+            </tr>
+          {% endfor %}
+          <tr class="total">
+            <td>TOTAL</td><td></td><td></td><td></td><td></td>
+            <td>{{ tot_investido }}</td><td>{{ tot_posicao }}</td><td>{{ tot_ganho }}</td>
+            <td>{{ tot_pct }}</td><td>{{ tot_posicao_r_est }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+<p class="nota">
+  PM, Cotação, Investido, Posição, Ganho e % são 100% em dólar — a rentabilidade não
+  sofre efeito de câmbio. A coluna "Posição (R$) est." é apenas uma conversão da
+  posição em dólar pelo câmbio USD/BRL de hoje ({{ "%.4f"|format(usd_brl) }}) — é uma
+  estimativa de valor em reais no dia, não faz parte do cálculo de rentabilidade.
+  Cotações: BRAPI.
+</p>

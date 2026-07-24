@@ -1,0 +1,33 @@
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "" }}</b></div>
+</div>
+<h1 class="hello">{{ classe }}</h1>
+
+<div class="card">
+  {% if vazio %}
+    <p style="color:var(--muted)">Nenhuma posição nesta classe no snapshot atual.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ativo</th><th>Setor</th><th>Qtd</th><th>PM (R$)</th><th>Cotação</th>
+              <th>Investido</th><th>Posição Atual</th><th>Ganho</th><th>%</th></tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+            <tr class="{{ 'pos-alta' if l.ren >= 10 else ('pos-baixa' if l.ren <= -10 else '') }}">
+              <td><b>{{ l.ativo }}</b></td><td>{{ l.setor }}</td><td>{{ l.qtd }}</td>
+              <td>{{ l.pm }}</td><td>{{ l.cotacao }}</td><td>{{ l.investido }}</td>
+              <td>{{ l.posicao }}</td><td>{{ l.ganho }}</td><td>{{ l.pct }}</td>
+            </tr>
+          {% endfor %}
+          <tr class="total">
+            <td>TOTAL</td><td></td><td></td><td></td><td></td>
+            <td>{{ tot_investido }}</td><td>{{ tot_posicao }}</td><td>{{ tot_ganho }}</td><td>{{ tot_pct }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+<p class="nota">Cotações: BRAPI ao vivo (com fallback yfinance) · Snapshot: {{ data_snapshot }}</p>

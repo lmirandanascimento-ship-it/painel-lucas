@@ -1,0 +1,26 @@
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "" }}</b></div>
+</div>
+<h1 class="hello">{{ titulo }}</h1>
+
+<div class="card">
+  {% if vazio %}
+    <p style="color:var(--muted)">Sem dados disponíveis.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for c in colunas %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for l in linhas %}
+            <tr>{% for c in colunas %}<td>{{ l[c] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px">
+      <span class="kpi-label">TOTAL</span>
+      <div class="kpi-value" style="font-size:1.3rem">{{ total }}</div>
+    </div>
+  {% endif %}
+</div>
+{% if nota %}<p class="nota">{{ nota }}</p>{% endif %}

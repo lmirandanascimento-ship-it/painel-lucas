@@ -1,0 +1,50 @@
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "" }}</b></div>
+</div>
+<h1 class="hello">📉 Evolução</h1>
+
+{% if vazio %}
+  <div class="card"><p style="color:var(--muted)">Histórico ainda não disponível.</p></div>
+{% else %}
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="label">Último Snapshot</div>
+      <div class="value">{{ kpi_ultimo }}</div>
+    </div>
+    <div class="kpi pos">
+      <div class="label">Ganho Acumulado</div>
+      <div class="value">{{ kpi_ganho }}</div>
+    </div>
+    <div class="kpi gold">
+      <div class="label">Rentabilidade</div>
+      <div class="value">{{ kpi_rentab }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>Patrimônio ao Longo do Tempo</h3>
+      <span class="tag">Verde = patrimônio · Dourado = capital base</span>
+    </div>
+    <div class="evo-svg-wrap">
+      <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" preserveAspectRatio="none">
+        <line class="evo-linha-base" x1="0" y1="{{ y_base }}" x2="{{ svg_w }}" y2="{{ y_base }}" />
+        <polyline class="evo-linha-patrimonio" points="{{ pontos_patrimonio }}" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-head"><h3>Histórico</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Patrimônio</th><th>Ganho Acum.</th><th>Rentab.</th></tr></thead>
+        <tbody>
+          {% for h in tabela %}
+            <tr><td>{{ h.data }}</td><td>{{ h.patrimonio }}</td><td>{{ h.ganho }}</td><td>{{ h.rentab }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
