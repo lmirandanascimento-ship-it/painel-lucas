@@ -46,11 +46,19 @@
       <div class="card-head"><h3>Contratos</h3></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Credor</th><th>Título</th><th>Saldo Devedor</th><th>Taxa a.m.</th><th>Juros/Mês</th></tr></thead>
+          <thead><tr><th>Credor</th><th>Título</th><th>Saldo Devedor</th><th>Taxa a.m.</th><th>Juros/Mês</th><th></th></tr></thead>
           <tbody>
             {% for c in contratos %}
               <tr><td>{{ c.credor }}</td><td>{{ c.titulo }}</td><td>{{ c.saldo }}</td>
-                  <td>{{ c.taxa }}</td><td>{{ c.juros_mes }}</td></tr>
+                  <td>{{ c.taxa }}</td><td>{{ c.juros_mes }}</td>
+                  <td class="acoes-col">
+                    <button type="button" class="btn-excluir"
+                            hx-post="/meus-emprestimos/excluir" hx-vals='{"emprestimo_id": "{{ c.id }}"}'
+                            hx-target="#meus-conteudo" hx-swap="outerHTML"
+                            hx-confirm="Excluir o empréstimo &quot;{{ c.titulo }}&quot; ({{ c.credor }})? Isso apaga o contrato e todo o histórico de pagamentos permanentemente. Essa ação não pode ser desfeita.">
+                      EXCLUIR
+                    </button>
+                  </td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -156,6 +164,12 @@
               · {{ c.credor }} · {{ c.n_pagamentos }} pagamento(s) ·
               Total pago: <b>{{ c.total_pago }}</b> · Saldo atual: <b>{{ c.saldo_atual }}</b>
             </span>
+            <button type="button" class="btn-excluir" style="float:right"
+                    hx-post="/meus-emprestimos/excluir" hx-vals='{"emprestimo_id": "{{ c.eid }}"}'
+                    hx-target="#meus-conteudo" hx-swap="outerHTML"
+                    hx-confirm="Excluir o empréstimo &quot;{{ c.titulo }}&quot; ({{ c.credor }})? Isso apaga o contrato e todo o histórico de pagamentos permanentemente. Essa ação não pode ser desfeita.">
+              EXCLUIR CONTRATO
+            </button>
           </div>
           <div class="table-wrap">
             <table>

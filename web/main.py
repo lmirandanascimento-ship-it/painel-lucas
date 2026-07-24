@@ -829,9 +829,34 @@ def meus_emprestimos_quitar(request: Request, emprestimo_id: str = Form(...)):
     if not current_user(request):
         return RedirectResponse("/login", status_code=303)
     try:
-        sb.table("emprestimos").update(
-            {"status": "quitado", "saldo_devedor": 0.0, "parcela_juros": 0.0}
-        ).eq("id", emprestimo_id).execute()
+        r = sb.table("emprestimos").select(
+            "saldo_devedor,historico_pagamentos").eq("id", emprestimo_id).execute()
+        saldo_at = float(r.data[0]["saldo_devedor"] or 0) if r.data else 0.0
+        hist_v = (r.data[0].get("historico_pagamentos") or []) if r.data else []
+        # Se ainda havia saldo devedor, registra uma "quitação" no histórico —
+        # sem isso, marcar como quitado apagava qualquer rastro do empréstimo.
+        if saldo_at > 0:
+            hist_v.append({
+                "data": agora_br().date().isoformat(), "valor_pago": round(saldo_at, 2),
+                "juros": 0.0, "amortizacao": round(saldo_at, 2),
+                "saldo_antes": round(saldo_at, 2), "saldo_depois": 0.0,
+                "obs": "Quitação total do contrato", "tipo": "amortizacao",
+            })
+        sb.table("emprestimos").update({
+            "status": "quitado", "saldo_devedor": 0.0, "parcela_juros": 0.0,
+            "historico_pagamentos": hist_v,
+        }).eq("id", emprestimo_id).execute()
+    except Exception:
+        pass
+    return _meus_emprestimos_response(request)
+
+
+@app.post("/meus-emprestimos/excluir", response_class=HTMLResponse)
+def meus_emprestimos_excluir(request: Request, emprestimo_id: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        sb.table("emprestimos").delete().eq("id", emprestimo_id).execute()
     except Exception:
         pass
     return _meus_emprestimos_response(request)
