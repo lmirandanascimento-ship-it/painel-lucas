@@ -8,6 +8,7 @@ import re
 import os
 import unicodedata
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -82,6 +83,10 @@ sb = get_sb()
 
 
 # ─── Utilitários ──────────────────────────────────────────────────────────────
+def agora_br() -> datetime:
+    """Hora atual no fuso de Brasília — o servidor (Railway) roda em UTC."""
+    return datetime.now(ZoneInfo("America/Sao_Paulo"))
+
 def brl(v, sign=False):
     if v is None: return "—"
     try:
@@ -498,7 +503,7 @@ def render_header():
             <span style='color:#bbb;font-size:.85rem;margin-left:14px'>Planejar · Poupar · Prosperar</span>
         </div>
         <div style='color:#ddd;font-size:.82rem'>
-            📅 {datetime.now().strftime("%d/%m/%Y")} &nbsp;|&nbsp; 👤 {nome}
+            📅 {agora_br().strftime("%d/%m/%Y")} &nbsp;|&nbsp; 👤 {nome}
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -619,13 +624,17 @@ def tab_resumo(snap_rv, snap_rf, posicoes_rv):
                 st.session_state["ultima_atualizacao"] = {
                     "ok":   ok_list,
                     "fail": fail_list,
-                    "hora": datetime.now().strftime("%H:%M:%S"),
+                    "hora": agora_br().strftime("%H:%M:%S"),
                 }
             st.rerun()
 
     with c_status:
         data_rv = snap_rv.get("data","—") if snap_rv else "—"
-        st.caption(f"RV: snapshot de {data_rv} · RF: snapshot de {snap_rf.get('data','—') if snap_rf else '—'} · USD/BRL: {usd_brl:.4f}")
+        usd_brl_hoje = fetch_usd_brl()
+        st.caption(
+            f"RV: snapshot de {data_rv} · RF: snapshot de {snap_rf.get('data','—') if snap_rf else '—'} · "
+            f"USD/BRL no snapshot: {usd_brl:.4f} · USD/BRL hoje: {usd_brl_hoje:.4f}"
+        )
 
     # ── Resultado da última atualização ─────────────────────────────────────────
     if "ultima_atualizacao" in st.session_state:
@@ -1173,7 +1182,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                                               help="Digite o valor no formato 800,00 ou 2.000,50")
                 valor_p = parse_brl(valor_p_str)
                 data_p  = fp2.date_input("Data do recebimento",
-                                          value=datetime.now().date(),
+                                          value=agora_br().date(),
                                           min_value=date.today() - timedelta(days=365),
                                           max_value=date.today(),
                                           format="DD/MM/YYYY")
@@ -1547,7 +1556,7 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
             nc1, nc2 = st.columns(2)
             new_titulo = nc1.text_input("Título")
             new_data   = nc2.date_input("Data do empréstimo",
-                                         value=datetime.now().date(),
+                                         value=agora_br().date(),
                                          min_value=date.today() - timedelta(days=365),
                                          max_value=date.today(),
                                          format="DD/MM/YYYY")
@@ -1968,7 +1977,7 @@ def tab_emprestimos(emp: pd.DataFrame):
                                                     help="Digite o valor no formato 800,00 ou 2.000,50")
                 valor_pago_v = parse_brl(valor_pago_str)
                 data_pag_v   = col_dp.date_input("Data do pagamento",
-                                                  value=datetime.now().date(),
+                                                  value=agora_br().date(),
                                                   min_value=date.today() - timedelta(days=365),
                                                   max_value=date.today(),
                                                   key="pag_data")
@@ -2592,6 +2601,6 @@ else:
 
     st.markdown(
         f"<p style='text-align:center;color:#bbb;font-size:.72rem'>"
-        f"3P Finanças · Planejar · Poupar · Prosperar · {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>",
+        f"3P Finanças · Planejar · Poupar · Prosperar · {agora_br().strftime('%d/%m/%Y %H:%M')}</p>",
         unsafe_allow_html=True,
     )
