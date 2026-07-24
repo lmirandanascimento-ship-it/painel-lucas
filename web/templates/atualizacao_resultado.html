@@ -1,0 +1,15 @@
+<div class="atualizacao-report">
+  <div class="titulo">{{ cor }} Atualização das {{ hora }} — {{ n_ok }} atualizado(s) · {{ n_fail }} com falha</div>
+  <div class="colunas">
+    <div>
+      <div class="ok-titulo">✅ Atualizados com sucesso</div>
+      <ul>{% for item in ok %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% if fail %}
+    <div>
+      <div class="fail-titulo">❌ Falhou (mantém o último valor conhecido)</div>
+      <ul>{% for item in fail %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+</div>

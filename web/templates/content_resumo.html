@@ -2,7 +2,15 @@
   <div class="who"><b>{{ user_email or "Lucas Miranda Nascimento" }}</b> · Assessor: Leandro Nascimento</div>
 </div>
 
-<h1 class="hello">Bem-vindo, <span class="accent">Lucas</span></h1>
+<div class="content-head">
+  <h1 class="hello">Bem-vindo, <span class="accent">Lucas</span></h1>
+  <button class="refresh-btn" hx-post="/atualizar-cotacoes" hx-target="#resultado-atualizacao"
+          hx-swap="innerHTML" hx-indicator="#spin-cotacoes">
+    🔄 Atualizar Cotações <span id="spin-cotacoes" class="htmx-indicator">·</span>
+  </button>
+</div>
+
+<div id="resultado-atualizacao"></div>
 
 <div class="kpi-row">
   <div class="kpi">

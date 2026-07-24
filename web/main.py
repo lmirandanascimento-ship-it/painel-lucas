@@ -8,6 +8,7 @@ de fingir que existem.
 import os
 import secrets
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +17,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from supabase import create_client
 
 import quotes
+
+
+def agora_br() -> datetime:
+    """Hora atual no fuso de Brasília — o servidor (Railway) roda em UTC."""
+    return datetime.now(ZoneInfo("America/Sao_Paulo"))
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 def _secret(key: str) -> str | None:
@@ -160,6 +166,42 @@ def load_posicoes_rv() -> list[dict]:
         return []
     max_date = max(d["data_snapshot"] for d in data)
     return [d for d in data if d["data_snapshot"] == max_date]
+
+
+def atualizar_cotacoes_ctx() -> dict:
+    """Força busca ao vivo (ignora o cache de 10min) e monta um relatório de
+    sucesso/falha — não recalcula o Patrimônio Total (esse vem do snapshot
+    gravado), só atualiza o cache pras próximas visitas às abas RV/Internacional."""
+    quotes.clear_cache()
+    posicoes_rv = load_posicoes_rv()
+    ok: list[str] = []
+    fail: list[str] = []
+
+    usd_val = quotes.fetch_usd_brl()
+    ok.append(f"USD/BRL → {usd_val:.4f}")
+
+    tickers_br = [p["ticker"] for p in posicoes_rv if p.get("moeda") == "BRL"]
+    tickers_us = [p["ticker"] for p in posicoes_rv if p.get("moeda") == "USD"]
+
+    if tickers_br:
+        prices_br, _ = quotes.fetch_precos_brapi(tuple(tickers_br), ())
+        for tk in tickers_br:
+            tk_c = tk.replace(".SA", "")
+            v = prices_br.get(tk_c) or prices_br.get(tk)
+            (ok.append(f"{tk_c} → R$ {v:.2f}") if v else fail.append(tk_c))
+
+    if tickers_us:
+        prices_us = quotes.fetch_precos_us(tuple(tickers_us))
+        for tk in tickers_us:
+            v = prices_us.get(tk)
+            (ok.append(f"{tk} → US$ {v:.2f}") if v else fail.append(tk))
+
+    n_ok, n_fail = len(ok), len(fail)
+    cor = "🟢" if n_fail == 0 else ("🟡" if n_ok > 0 else "🔴")
+    return {
+        "ok": ok, "fail": fail, "n_ok": n_ok, "n_fail": n_fail, "cor": cor,
+        "hora": agora_br().strftime("%H:%M:%S"),
+    }
 
 
 # ─── RV BR (Ações BR / ETF BR / FIIs) ─────────────────────────────────────────
@@ -458,3 +500,11 @@ def nav(request: Request, section: str, sub: str | None = None):
         "nav": NAV, "active": section, "active_sub": sub,
         "content_html": content_html,
     })
+
+
+@app.post("/atualizar-cotacoes", response_class=HTMLResponse)
+def atualizar_cotacoes(request: Request):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "atualizacao_resultado.html",
+                                       atualizar_cotacoes_ctx())

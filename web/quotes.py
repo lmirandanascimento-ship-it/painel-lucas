@@ -10,6 +10,10 @@ BRAPI_TOKEN = "o1ikT8zCSyqQUkNYz224ho"
 _cache_store: dict = {}
 
 
+def clear_cache() -> None:
+    _cache_store.clear()
+
+
 def ttl_cache(seconds: int):
     def deco(fn):
         @functools.wraps(fn)
