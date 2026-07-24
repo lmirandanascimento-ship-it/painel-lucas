@@ -1590,6 +1590,49 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
+    # ── Excluir Contrato ───────────────────────────────────────────────────────
+    todos_contratos = pd.concat([ativos_d, quit_d], ignore_index=True) \
+                       if not quit_d.empty else ativos_d.copy()
+    if not todos_contratos.empty:
+        with st.expander("🗑️ Excluir Contrato de Empréstimo"):
+            opcoes_del = todos_contratos["titulo"].tolist()
+            sel_del  = st.selectbox("Contrato", opcoes_del, key=f"del_emp_sel_{dev_id}")
+            row_del  = todos_contratos[todos_contratos["titulo"] == sel_del].iloc[0]
+            eid_del  = int(row_del["id"])
+            del_key  = f"confirm_del_emp_{eid_del}"
+            n_pag_del = int((pagtos_d["emprestimo_id"] == eid_del).sum()) if not pagtos_d.empty else 0
+            st.caption(
+                f"Valor original: **{brl(float(row_del['valor_original']))}** · "
+                f"Saldo devedor: **{brl(float(row_del['saldo_devedor']))}** · "
+                f"{n_pag_del} pagamento(s) registrado(s)"
+            )
+            if st.session_state.get(del_key):
+                st.warning(
+                    f"Excluir o contrato **{sel_del}** definitivamente? "
+                    + (f"Isso também apaga o(s) {n_pag_del} pagamento(s) registrado(s) nele. "
+                       if n_pag_del else "")
+                    + "Essa ação não pode ser desfeita."
+                )
+                dc1, dc2 = st.columns(2)
+                if dc1.button("✅ Confirmar exclusão", key=f"conf_{del_key}",
+                              type="primary", use_container_width=True):
+                    try:
+                        sb.table("emprestimos_concedidos").delete().eq("id", eid_del).execute()
+                        st.session_state.pop(del_key, None)
+                        load_emprestimos_concedidos.clear()
+                        load_pagamentos_recebidos.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
+                if dc2.button("❌ Cancelar", key=f"canc_{del_key}", use_container_width=True):
+                    st.session_state.pop(del_key, None)
+                    st.rerun()
+            else:
+                if st.button("🗑️ Excluir Contrato", key=f"btn_{del_key}",
+                              use_container_width=True):
+                    st.session_state[del_key] = True
+                    st.rerun()
+
 
 # ─── TAB: EMPRÉSTIMOS ─────────────────────────────────────────────────────────
 def tab_emprestimos(emp: pd.DataFrame):
