@@ -1,0 +1,132 @@
+<div id="escritorio-conteudo">
+  {% if vazio %}
+    <div class="card"><p style="color:var(--muted)">Nenhum dado de investimento cadastrado.</p></div>
+  {% else %}
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="label">Saldo Atual</div>
+        <div class="value">{{ kpi_saldo }}</div>
+      </div>
+      <div class="kpi gold">
+        <div class="label">Rendimento Último Mês</div>
+        <div class="value">{{ kpi_rend_ultimo }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Rendimento Acumulado</div>
+        <div class="value">{{ kpi_rend_acum }}</div>
+      </div>
+      <div class="kpi {{ 'pos' if rentab_positiva else '' }}">
+        <div class="label">Rentabilidade Total</div>
+        <div class="value">{{ kpi_rentab }}</div>
+        <div class="sub">Desde {{ desde }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Saldo e Rendimento</h3>
+        <span class="tag">Verde = saldo · Dourado = rendimento</span>
+      </div>
+      <div class="evo-svg-wrap">
+        <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" preserveAspectRatio="none">
+          {% for b in barras %}
+            <rect class="evo-barra" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" />
+          {% endfor %}
+          <polyline class="evo-linha-saldo" points="{{ pontos_saldo }}" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head"><h3>Lançamentos</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Mês</th><th>Tipo</th><th>Aporte</th><th>Rendimento</th><th>Saldo Final</th></tr></thead>
+          <tbody>
+            {% for l in linhas %}
+              <tr><td>{{ l.mes }}</td><td>{{ l.tipo }}</td><td>{{ l.aporte }}</td>
+                  <td>{{ l.rendimento }}</td><td>{{ l.saldo_final }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+  <details class="painel" open>
+    <summary>➕ Lançar Novo Mês</summary>
+    <div class="painel-corpo">
+      <form hx-post="/escritorio/lancar" hx-target="#escritorio-conteudo" hx-swap="outerHTML">
+        <div class="form-grid">
+          <div class="campo">
+            <label for="em-mes">Mês de referência</label>
+            <input type="month" id="em-mes" name="mes" required>
+          </div>
+          <div class="campo">
+            <label for="em-tipo">Tipo</label>
+            <select id="em-tipo" name="tipo" onchange="atualizaPreviewEscritorio()">
+              {% for t in tipos %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="campo" style="margin-bottom:10px">
+          <label for="em-valor">Valor (R$)</label>
+          <input type="text" id="em-valor" name="valor" value="0,00" placeholder="ex: 5.000,00"
+                 oninput="atualizaPreviewEscritorio()">
+        </div>
+        <p id="em-preview" class="nota" style="margin-top:0"></p>
+        <button type="submit" class="btn-primario">💾 Salvar Lançamento</button>
+      </form>
+    </div>
+  </details>
+
+  {% if not vazio %}
+  <details class="painel">
+    <summary>🗑️ Excluir Último Lançamento</summary>
+    <div class="painel-corpo">
+      <p class="nota" style="margin-top:0">
+        Último lançamento: <b>{{ ultimo_mes_fmt }}</b> · Tipo: <b>{{ ultimo_tipo }}</b> ·
+        Saldo final: <b>{{ ultimo_saldo_fmt }}</b>
+      </p>
+      <button class="btn-perigo" hx-post="/escritorio/excluir" hx-target="#escritorio-conteudo"
+              hx-swap="outerHTML"
+              hx-confirm="Excluir o lançamento de {{ ultimo_mes_fmt }}? O saldo do Escritório volta a ser o do mês anterior. Essa ação não pode ser desfeita.">
+        🗑️ Excluir Último Lançamento
+      </button>
+    </div>
+  </details>
+  {% endif %}
+
+<script>
+(function () {
+  var ULTIMO_SALDO = {{ ultimo_saldo }};
+  var TAXA = {{ taxa }};
+  function parseBRL(s) {
+    s = (s || "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+    return parseFloat(s) || 0;
+  }
+  function fmtBRL(v) {
+    var neg = v < 0; v = Math.abs(v);
+    var s = v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (neg ? "-R$ " : "R$ ") + s;
+  }
+  window.atualizaPreviewEscritorio = function () {
+    var tipoEl = document.getElementById("em-tipo");
+    var valorEl = document.getElementById("em-valor");
+    var previewEl = document.getElementById("em-preview");
+    if (!tipoEl || !valorEl || !previewEl) return;
+    var ehRetirada = tipoEl.value === "Retirada / Pró-labore";
+    var valor = parseBRL(valorEl.value);
+    var valorEfet = ehRetirada ? -valor : valor;
+    var rend = Math.round(ULTIMO_SALDO * TAXA * 100) / 100;
+    var saldoCalc = Math.round((ULTIMO_SALDO + valorEfet + rend) * 100) / 100;
+    previewEl.textContent =
+      "Rendimento (1% s/ " + fmtBRL(ULTIMO_SALDO) + "): " + fmtBRL(rend) +
+      " · Saldo final: " + fmtBRL(saldoCalc) +
+      " (= último " + fmtBRL(ULTIMO_SALDO) + (ehRetirada ? " − " : " + ") +
+      "valor " + fmtBRL(valor) + " + rend " + fmtBRL(rend) + ")";
+  };
+  atualizaPreviewEscritorio();
+})();
+</script>
+</div>

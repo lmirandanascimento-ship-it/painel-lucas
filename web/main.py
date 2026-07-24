@@ -553,6 +553,9 @@ def historico_meus_ctx() -> dict:
         indexed = list(enumerate(hist))[::-1]
         pagamentos = []
         for idx, hp in indexed:
+            obs_fmt = str(hp.get("obs") or "")
+            if hp.get("tipo", "amortizacao") == "juros":
+                obs_fmt = "🔵 Somente Juros" + (f" · {obs_fmt}" if obs_fmt else "")
             pagamentos.append({
                 "idx": idx, "is_ultimo": (idx == ultimo_idx),
                 "data": _fmt_data_me(hp.get("data")),
@@ -560,7 +563,7 @@ def historico_meus_ctx() -> dict:
                 "juros": brl(hp.get("juros")),
                 "amortizacao": brl(hp.get("amortizacao")),
                 "saldo_depois": brl(hp.get("saldo_depois")),
-                "obs": str(hp.get("obs") or ""),
+                "obs": obs_fmt,
             })
         contratos.append({
             "eid": r_h["id"], "titulo": r_h["titulo"], "credor": r_h.get("credor", ""),
@@ -723,7 +726,7 @@ def escritorio_lancar(request: Request, mes: str = Form(...), tipo: str = Form(.
     except Exception:
         pass
     ctx = escritorio_ctx()
-    return templates.TemplateResponse(request, "content_escritorio.html",
+    return templates.TemplateResponse(request, "_escritorio_inner.html",
                                        {**ctx, "user_email": current_user(request)})
 
 
@@ -739,13 +742,16 @@ def escritorio_excluir(request: Request):
         except Exception:
             pass
     ctx = escritorio_ctx()
-    return templates.TemplateResponse(request, "content_escritorio.html",
+    return templates.TemplateResponse(request, "_escritorio_inner.html",
                                        {**ctx, "user_email": current_user(request)})
 
 
 def _meus_emprestimos_response(request: Request) -> HTMLResponse:
+    """Retorna só o 'miolo' (#meus-conteudo) — usado pelas respostas HTMX de
+    escrita, que trocam apenas essa div. Nunca retornar content_meus_emprestimos.html
+    aqui (ele tem o cabeçalho por fora da div — duplicaria a cada ação)."""
     ctx = meus_emprestimos_ctx()
-    return templates.TemplateResponse(request, "content_meus_emprestimos.html",
+    return templates.TemplateResponse(request, "_meus_inner.html",
                                        {**ctx, "user_email": current_user(request)})
 
 
@@ -774,6 +780,7 @@ def meus_emprestimos_novo(request: Request, credor: str = Form(...), titulo: str
 
 @app.post("/meus-emprestimos/pagamento", response_class=HTMLResponse)
 def meus_emprestimos_pagamento(request: Request, emprestimo_id: str = Form(...),
+                                tipo: str = Form("amortizacao"),
                                 valor: str = Form(...), data: str = Form(...),
                                 obs: str = Form("")):
     if not current_user(request):
@@ -781,26 +788,36 @@ def meus_emprestimos_pagamento(request: Request, emprestimo_id: str = Form(...),
     emp = load_emprestimos_meus()
     row = next((e for e in emp if str(e["id"]) == emprestimo_id), None)
     if row:
+        eh_somente_juros = (tipo == "juros")
         saldo_at = float(row["saldo_devedor"] or 0)
         juros_mes_v = float(row["parcela_juros"] or 0)
         valor_pago_v = parse_brl(valor)
-        juros_no_pag = min(valor_pago_v, juros_mes_v)
-        amort_v = max(0.0, valor_pago_v - juros_no_pag)
-        novo_saldo_v = max(0.0, saldo_at - amort_v)
+        if eh_somente_juros:
+            # Pagamento somente de juros: não abate o saldo devedor.
+            amort_v = 0.0
+            novo_saldo_v = saldo_at
+            juros_reg = round(valor_pago_v, 2)
+        else:
+            # Amortização pura: o valor pago debita integralmente do saldo.
+            # Juros do período ficam registrados como referência, sem abater do valor.
+            amort_v = valor_pago_v
+            novo_saldo_v = max(0.0, saldo_at - amort_v)
+            juros_reg = round(juros_mes_v, 2)
         try:
             res_h = sb.table("emprestimos").select("historico_pagamentos").eq("id", emprestimo_id).execute()
             hist_v = (res_h.data[0].get("historico_pagamentos") or []) if res_h.data else []
             hist_v.append({
                 "data": data, "valor_pago": round(valor_pago_v, 2),
-                "juros": round(juros_no_pag, 2), "amortizacao": round(amort_v, 2),
+                "juros": juros_reg, "amortizacao": round(amort_v, 2),
                 "saldo_antes": round(saldo_at, 2), "saldo_depois": round(novo_saldo_v, 2),
-                "obs": obs,
+                "obs": obs, "tipo": "juros" if eh_somente_juros else "amortizacao",
             })
-            upd = {"saldo_devedor": round(novo_saldo_v, 2),
-                   "parcela_juros": round(novo_saldo_v * float(row["taxa_juros"] or 0), 2),
-                   "historico_pagamentos": hist_v}
-            if novo_saldo_v == 0:
-                upd["status"] = "quitado"
+            upd = {"historico_pagamentos": hist_v}
+            if not eh_somente_juros:
+                upd["saldo_devedor"] = round(novo_saldo_v, 2)
+                upd["parcela_juros"] = round(novo_saldo_v * float(row["taxa_juros"] or 0), 2)
+                if novo_saldo_v == 0:
+                    upd["status"] = "quitado"
             sb.table("emprestimos").update(upd).eq("id", emprestimo_id).execute()
         except Exception:
             pass
@@ -853,11 +870,14 @@ def meus_linha_normal(request: Request, eid: str, idx: int):
     is_quitado = (r_h.get("status") == "quitado") or (float(r_h.get("saldo_devedor") or 0) <= 0)
     ultimo_idx = -1 if is_quitado else (len(hist) - 1)
     hp = hist[idx]
+    obs_fmt = str(hp.get("obs") or "")
+    if hp.get("tipo", "amortizacao") == "juros":
+        obs_fmt = "🔵 Somente Juros" + (f" · {obs_fmt}" if obs_fmt else "")
     pagamento = {
         "idx": idx, "is_ultimo": (idx == ultimo_idx),
         "data": _fmt_data_me(hp.get("data")), "valor_pago": brl(hp.get("valor_pago")),
         "juros": brl(hp.get("juros")), "amortizacao": brl(hp.get("amortizacao")),
-        "saldo_depois": brl(hp.get("saldo_depois")), "obs": str(hp.get("obs") or ""),
+        "saldo_depois": brl(hp.get("saldo_depois")), "obs": obs_fmt,
     }
     return templates.TemplateResponse(request, "_linha_me_normal.html",
                                        {"eid": eid, "pagamento": pagamento})
@@ -876,16 +896,23 @@ def meus_linha_salvar(request: Request, eid: str, idx: int, data: str = Form(...
             taxa_c = float(row.get("taxa_juros") or 0)
             if idx < len(hist):
                 hp = hist[idx]
+                eh_juros_edit = (hp.get("tipo", "amortizacao") == "juros")
                 novo_val_pago = round(parse_brl(valor), 2)
                 juros_digitado = round(parse_brl(juros), 2)
-                juros_aplicado = round(min(novo_val_pago, max(0.0, juros_digitado)), 2)
-                nova_amort = round(max(0.0, novo_val_pago - juros_aplicado), 2)
                 saldo_antes_e = float(hp.get("saldo_antes") or 0)
-                novo_saldo_e = round(max(0.0, saldo_antes_e - nova_amort), 2)
+                if eh_juros_edit:
+                    # Pagamento "somente juros" nunca abate o saldo (amort = 0),
+                    # mesmo após edição — preserva o tipo original do lançamento.
+                    nova_amort = 0.0
+                    novo_saldo_e = round(saldo_antes_e, 2)
+                else:
+                    nova_amort = novo_val_pago
+                    novo_saldo_e = round(max(0.0, saldo_antes_e - nova_amort), 2)
                 hist[idx] = {
-                    "data": data, "valor_pago": novo_val_pago, "juros": juros_aplicado,
-                    "amortizacao": nova_amort, "saldo_antes": round(saldo_antes_e, 2),
+                    "data": data, "valor_pago": novo_val_pago, "juros": juros_digitado,
+                    "amortizacao": round(nova_amort, 2), "saldo_antes": round(saldo_antes_e, 2),
                     "saldo_depois": novo_saldo_e, "obs": obs,
+                    "tipo": hp.get("tipo", "amortizacao"),
                 }
                 novo_parcela_e = round(novo_saldo_e * taxa_c, 2)
                 sb.table("emprestimos").update({
