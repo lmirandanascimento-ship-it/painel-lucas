@@ -22,10 +22,6 @@ VERDE2       = "#2D6A4F"
 OURO         = "#B8860B"
 CAPITAL_BASE = 684_160.69
 BRAPI_TOKEN  = "o1ikT8zCSyqQUkNYz224ho"
-# Câmbio de referência p/ custo (Investido) dos ativos internacionais — o câmbio
-# real embutido nos snapshots é desconhecido/inconsistente por operação. Usar
-# R$5,00 fixo até o Leandro confirmar o câmbio praticado em cada compra.
-TAXA_CAMBIO_REF_USD = 5.00
 INTL_CLASSES = {"ETF USA", "REITs", "Stocks"}
 CLASS_COLORS = {
     "Ações BR": "#22C55E", "ETF BR": "#16A34A", "FII": "#3B82F6",
@@ -97,6 +93,17 @@ def brl(v, sign=False):
     s = f"{abs(v):,.2f}".replace(",","X").replace(".",",").replace("X",".")
     prefix = ("+" if v >= 0 else "-") if sign else ("-" if v < 0 else "")
     return f"R$ {prefix}{s}"
+
+def usd(v, sign=False):
+    if v is None: return "—"
+    try:
+        v = float(v)
+    except Exception:
+        return "—"
+    if v != v:  # NaN
+        return "—"
+    prefix = ("+" if v >= 0 else "-") if sign else ("-" if v < 0 else "")
+    return f"US$ {prefix}{abs(v):,.2f}"
 
 def brl_input(v: float) -> str:
     """Formata float para string de input no padrão BRL: 40.000,00"""
@@ -807,41 +814,44 @@ def tab_internacional(snap_rv, posicoes_rv):
                 continue
 
             rows = []
-            tot_inv = 0.0; tot_at = 0.0
+            tot_inv_usd = 0.0; tot_at_usd = 0.0
             for p in posicoes:
-                nome     = p.get("nome", "")
-                at_snap  = float(p.get("atual") or 0)
-                qtd      = float(p.get("qtd") or 0)
-                pm_usd   = float(p.get("preco_pago_usd") or p.get("preco_atual_usd") or 0)
-                # Custo em R$ recalculado com câmbio de referência fixo (não o
-                # câmbio embutido no snapshot, que é desconhecido/inconsistente).
-                inv_brl  = round(qtd * pm_usd * TAXA_CAMBIO_REF_USD, 2)
-                p_live   = prices.get(nome)
-                at_live  = p_live * qtd * usd_brl if p_live and qtd else at_snap
-                ren      = (at_live / inv_brl - 1) * 100 if inv_brl else 0
-                tot_inv += inv_brl; tot_at += at_live
+                nome        = p.get("nome", "")
+                qtd         = float(p.get("qtd") or 0)
+                pm_usd      = float(p.get("preco_pago_usd") or p.get("preco_atual_usd") or 0)
+                p_live      = prices.get(nome)
+                cotacao_usd = p_live if p_live else float(p.get("preco_atual_usd") or 0)
+                inv_usd     = round(qtd * pm_usd, 2)
+                at_usd      = round(qtd * cotacao_usd, 2)
+                ren         = (at_usd / inv_usd - 1) * 100 if inv_usd else 0
+                tot_inv_usd += inv_usd; tot_at_usd += at_usd
 
                 rows.append({
-                    "Ativo":       nome,
-                    "Setor":       p.get("setor",""),
-                    "Qtd":         f"{qtd:g}" if qtd else "—",
-                    "PM (US$)":    f"US$ {pm_usd:,.2f}" if pm_usd else "—",
-                    "Cotação":     f"US$ {p_live:,.2f}" if p_live else "⟳",
-                    "Inv. (R$)":   brl(inv_brl),
-                    "Posição (R$)":brl(at_live),
-                    "Ganho (R$)":  brl(at_live - inv_brl, sign=True),
-                    "%":           pct(ren),
+                    "Ativo":            nome,
+                    "Setor":            p.get("setor",""),
+                    "Qtd":              f"{qtd:g}" if qtd else "—",
+                    "PM (US$)":         usd(pm_usd) if pm_usd else "—",
+                    "Cotação (US$)":    usd(cotacao_usd) if p_live else "⟳",
+                    "Investido (US$)":  usd(inv_usd),
+                    "Posição (US$)":    usd(at_usd),
+                    "Ganho (US$)":      usd(at_usd - inv_usd, sign=True),
+                    "%":                pct(ren),
+                    "Posição (R$) est.": brl(at_usd * usd_brl),
                 })
-            ren_t = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
+            ren_t = (tot_at_usd / tot_inv_usd - 1) * 100 if tot_inv_usd else 0
             rows.append({"Ativo":"TOTAL","Setor":"","Qtd":"","PM (US$)":"",
-                         "Cotação":"","Inv. (R$)":brl(tot_inv),"Posição (R$)":brl(tot_at),
-                         "Ganho (R$)":brl(tot_at-tot_inv,sign=True),"%":pct(ren_t)})
+                         "Cotação (US$)":"","Investido (US$)":usd(tot_inv_usd),
+                         "Posição (US$)":usd(tot_at_usd),
+                         "Ganho (US$)":usd(tot_at_usd-tot_inv_usd,sign=True),
+                         "%":pct(ren_t), "Posição (R$) est.": brl(tot_at_usd * usd_brl)})
             st.dataframe(pd.DataFrame(rows), use_container_width=True,
                          hide_index=True, height=300)
     st.caption(
-        f"USD/BRL hoje: {usd_brl:.4f} (usado na Posição Atual) · "
-        f"Câmbio de referência do custo: R$ {TAXA_CAMBIO_REF_USD:.2f} "
-        f"(provisório, até confirmar o câmbio real de cada compra) · Cotações: BRAPI"
+        f"PM, Cotação, Investido, Posição, Ganho e % são 100% em dólar — a rentabilidade "
+        f"não sofre efeito de câmbio. A coluna \"Posição (R$) est.\" é apenas uma "
+        f"conversão da posição em dólar pelo câmbio USD/BRL de hoje ({usd_brl:.4f}) "
+        f"— é uma estimativa de valor em reais no dia, não faz parte do cálculo de "
+        f"rentabilidade. Cotações: BRAPI."
     )
 
 
