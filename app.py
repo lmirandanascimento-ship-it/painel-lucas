@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="3P Finanças | Painel Lucas",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 VERDE        = "#1A4731"
@@ -24,6 +24,8 @@ OURO         = "#B8860B"
 CAPITAL_BASE = 684_160.69
 BRAPI_TOKEN  = "o1ikT8zCSyqQUkNYz224ho"
 INTL_CLASSES = {"ETF USA", "REITs", "Stocks"}
+INTL_SUBS = ["📊 ETF USA", "🏠 REITs", "📈 Stocks"]
+EMP_SUBS  = ["🏦 Empréstimos Concedidos", "💳 Meus Empréstimos"]
 CLASS_COLORS = {
     "Ações BR": "#22C55E", "ETF BR": "#16A34A", "FII": "#3B82F6",
     "ETF USA":  "#F59E0B", "REITs":  "#F97316", "Stocks": "#EF4444",
@@ -32,34 +34,80 @@ CLASS_COLORS = {
 }
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
+SERIF = '"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif'
+
 st.markdown(f"""
 <style>
 /* ── Base ── */
-.stApp {{ background:#FFFBEF; }}
+.stApp {{ background:#F5F0E6; }}
 #MainMenu {{visibility:hidden;}} footer {{visibility:hidden;}}
 
-/* ── Header ── */
+/* ── Header (barra fina de contexto, sem duplicar a marca — essa já está no menu lateral) ── */
 .header-3p {{
-    background:{VERDE}; padding:14px 28px; border-radius:10px;
-    margin-bottom:18px; display:flex; justify-content:space-between; align-items:center;
+    padding:6px 4px 14px; margin-bottom:4px;
+    display:flex; justify-content:flex-end; align-items:center;
+    border-bottom:1px solid #E7E0CE;
 }}
+
+/* ── Tipografia de destaque (números grandes, títulos) ── */
+.kpi-value {{ font-family:{SERIF}; font-size:1.55rem; font-weight:700; color:#1E2320; letter-spacing:-.01em; }}
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {{ font-family:{SERIF}; }}
 
 /* ── KPI Cards ── */
 .kpi-card {{
-    background:white; border:1px solid #E8E4D0;
-    border-left:5px solid {VERDE}; border-radius:8px; padding:16px 18px;
+    background:#FFFFFF; border:1px solid #E7E0CE;
+    border-left:4px solid {VERDE}; border-radius:16px; padding:16px 20px;
+    box-shadow:0 1px 2px rgba(30,35,32,.04), 0 8px 20px rgba(30,35,32,.05);
 }}
 .kpi-card.ouro  {{ border-left-color:{OURO}; }}
 .kpi-card.neg   {{ border-left-color:#B71C1C; }}
-.kpi-value  {{ font-size:1.6rem; font-weight:800; color:#1A1A1A; }}
-.kpi-label  {{ font-size:0.78rem; color:#777; margin-top:5px; }}
-.kpi-sub    {{ font-size:0.75rem; color:#999; margin-top:3px; }}
+.kpi-label  {{ font-size:0.72rem; text-transform:uppercase; letter-spacing:.06em; color:#9A9484; margin-top:0; }}
+.kpi-sub    {{ font-size:0.75rem; color:#756F62; margin-top:3px; }}
 .alerta-ouro {{
-    background:#FFFBEB; border-left:4px solid {OURO};
-    padding:12px 16px; border-radius:6px; margin-top:10px;
+    background:#F6EFDC; border-left:4px solid {OURO};
+    padding:12px 16px; border-radius:10px; margin-top:10px;
 }}
 .pos {{ color:#1B7A34; font-weight:700; }}
 .neg {{ color:#B71C1C; font-weight:700; }}
+
+/* ── Menu lateral ── */
+[data-testid="stSidebar"] {{
+    background:#FBF8F0; border-right:1px solid #E7E0CE;
+}}
+.side-brand {{ padding:6px 10px 20px; }}
+.side-brand .mark {{
+    font-family:{SERIF}; font-weight:700; font-size:1.3rem; line-height:1.05; color:{VERDE};
+}}
+.side-brand .mark span {{ color:{OURO}; }}
+.side-brand .tag {{
+    font-size:.6rem; letter-spacing:.13em; text-transform:uppercase; color:#9A9484; margin-top:4px;
+}}
+.side-sub-label {{
+    font-size:.66rem; letter-spacing:.08em; text-transform:uppercase;
+    color:#9A9484; margin:2px 4px 2px 26px;
+}}
+[data-testid="stSidebar"] div[data-testid="stRadio"] > label {{ display:none; }}
+[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {{
+    display:flex; flex-direction:column; gap:2px;
+}}
+[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label {{
+    display:flex; align-items:center; padding:9px 12px;
+    border-radius:12px; cursor:pointer; color:#756F62;
+    font-size:.85rem; font-weight:500; transition:background .15s, color .15s;
+}}
+[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {{
+    background:#F5F0E6; color:#1E2320;
+}}
+[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {{
+    background:{VERDE}; color:#C9A227; font-weight:700;
+}}
+[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] {{
+    display:none;
+}}
+[data-testid="stSidebar"] .stButton button {{
+    border-radius:999px; border:1px solid #E7E0CE; background:#FFFFFF; color:#756F62;
+}}
+[data-testid="stSidebar"] .stButton button:hover {{ color:#B71C1C; border-color:#B71C1C; }}
 
 /* ── Botões EDITAR/EXCLUIR usam <a> HTML com inline styles — sem CSS necessário ── */
 </style>
@@ -498,11 +546,7 @@ def render_header():
     nome = (user.email or "").split("@")[0].capitalize()
     st.markdown(f"""
     <div class='header-3p'>
-        <div>
-            <span style='color:{OURO};font-size:1.2rem;font-weight:800'>3P FINANÇAS</span>
-            <span style='color:#bbb;font-size:.85rem;margin-left:14px'>Planejar · Poupar · Prosperar</span>
-        </div>
-        <div style='color:#ddd;font-size:.82rem'>
+        <div style='color:#756F62;font-size:.82rem'>
             📅 {agora_br().strftime("%d/%m/%Y")} &nbsp;|&nbsp; 👤 {nome}
         </div>
     </div>""", unsafe_allow_html=True)
@@ -812,49 +856,49 @@ def tab_internacional(snap_rv, posicoes_rv):
         with st.spinner("Buscando cotações internacionais..."):
             prices, usd_brl = fetch_precos_brapi((), tickers_us)
 
-    tabs_intl = st.tabs(["📊 ETF USA", "🏠 REITs", "📈 Stocks"])
+    # Submenu real fica no menu lateral (session_state["intl_sub_nav"]) — aqui só lê.
+    sub_sel = st.session_state.get("intl_sub_nav", INTL_SUBS[0])
+    classe  = sub_sel.split(" ", 1)[1]
+    st.markdown(f"#### {sub_sel}")
 
-    for tab_obj, classe in zip(tabs_intl, ["ETF USA", "REITs", "Stocks"]):
-        with tab_obj:
-            cls_data = dados.get("classes", {}).get(classe, {})
-            posicoes = cls_data.get("posicoes", [])
-            if not posicoes:
-                st.info("Sem posições.")
-                continue
+    cls_data = dados.get("classes", {}).get(classe, {})
+    posicoes = cls_data.get("posicoes", [])
+    if not posicoes:
+        st.info("Sem posições.")
+    else:
+        rows = []
+        tot_inv_usd = 0.0; tot_at_usd = 0.0
+        for p in posicoes:
+            nome        = p.get("nome", "")
+            qtd         = float(p.get("qtd") or 0)
+            pm_usd      = float(p.get("preco_pago_usd") or p.get("preco_atual_usd") or 0)
+            p_live      = prices.get(nome)
+            cotacao_usd = p_live if p_live else float(p.get("preco_atual_usd") or 0)
+            inv_usd     = round(qtd * pm_usd, 2)
+            at_usd      = round(qtd * cotacao_usd, 2)
+            ren         = (at_usd / inv_usd - 1) * 100 if inv_usd else 0
+            tot_inv_usd += inv_usd; tot_at_usd += at_usd
 
-            rows = []
-            tot_inv_usd = 0.0; tot_at_usd = 0.0
-            for p in posicoes:
-                nome        = p.get("nome", "")
-                qtd         = float(p.get("qtd") or 0)
-                pm_usd      = float(p.get("preco_pago_usd") or p.get("preco_atual_usd") or 0)
-                p_live      = prices.get(nome)
-                cotacao_usd = p_live if p_live else float(p.get("preco_atual_usd") or 0)
-                inv_usd     = round(qtd * pm_usd, 2)
-                at_usd      = round(qtd * cotacao_usd, 2)
-                ren         = (at_usd / inv_usd - 1) * 100 if inv_usd else 0
-                tot_inv_usd += inv_usd; tot_at_usd += at_usd
-
-                rows.append({
-                    "Ativo":            nome,
-                    "Setor":            p.get("setor",""),
-                    "Qtd":              f"{qtd:g}" if qtd else "—",
-                    "PM (US$)":         usd(pm_usd) if pm_usd else "—",
-                    "Cotação (US$)":    usd(cotacao_usd) if p_live else "⟳",
-                    "Investido (US$)":  usd(inv_usd),
-                    "Posição (US$)":    usd(at_usd),
-                    "Ganho (US$)":      usd(at_usd - inv_usd, sign=True),
-                    "%":                pct(ren),
-                    "Posição (R$) est.": brl(at_usd * usd_brl),
-                })
-            ren_t = (tot_at_usd / tot_inv_usd - 1) * 100 if tot_inv_usd else 0
-            rows.append({"Ativo":"TOTAL","Setor":"","Qtd":"","PM (US$)":"",
-                         "Cotação (US$)":"","Investido (US$)":usd(tot_inv_usd),
-                         "Posição (US$)":usd(tot_at_usd),
-                         "Ganho (US$)":usd(tot_at_usd-tot_inv_usd,sign=True),
-                         "%":pct(ren_t), "Posição (R$) est.": brl(tot_at_usd * usd_brl)})
-            st.dataframe(pd.DataFrame(rows), use_container_width=True,
-                         hide_index=True, height=300)
+            rows.append({
+                "Ativo":            nome,
+                "Setor":            p.get("setor",""),
+                "Qtd":              f"{qtd:g}" if qtd else "—",
+                "PM (US$)":         usd(pm_usd) if pm_usd else "—",
+                "Cotação (US$)":    usd(cotacao_usd) if p_live else "⟳",
+                "Investido (US$)":  usd(inv_usd),
+                "Posição (US$)":    usd(at_usd),
+                "Ganho (US$)":      usd(at_usd - inv_usd, sign=True),
+                "%":                pct(ren),
+                "Posição (R$) est.": brl(at_usd * usd_brl),
+            })
+        ren_t = (tot_at_usd / tot_inv_usd - 1) * 100 if tot_inv_usd else 0
+        rows.append({"Ativo":"TOTAL","Setor":"","Qtd":"","PM (US$)":"",
+                     "Cotação (US$)":"","Investido (US$)":usd(tot_inv_usd),
+                     "Posição (US$)":usd(tot_at_usd),
+                     "Ganho (US$)":usd(tot_at_usd-tot_inv_usd,sign=True),
+                     "%":pct(ren_t), "Posição (R$) est.": brl(tot_at_usd * usd_brl)})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     hide_index=True, height=300)
     st.caption(
         f"PM, Cotação, Investido, Posição, Ganho e % são 100% em dólar — a rentabilidade "
         f"não sofre efeito de câmbio. A coluna \"Posição (R$) est.\" é apenas uma "
@@ -1646,14 +1690,9 @@ def _conteudo_devedor(dev_id: int, dev_nome: str):
 # ─── TAB: EMPRÉSTIMOS ─────────────────────────────────────────────────────────
 def tab_emprestimos(emp: pd.DataFrame):
     """Aba principal de empréstimos: concedidos (créditos) + tomados (débitos)."""
-    # sub-navegação via session_state (não perde estado em reruns)
-    _EMP_SUBS = ["🏦 Empréstimos Concedidos", "💳 Meus Empréstimos"]
-    if "emp_sub_nav" not in st.session_state:
-        st.session_state["emp_sub_nav"] = _EMP_SUBS[0]
-    emp_nav = st.radio(
-        "Sub-seção", _EMP_SUBS, horizontal=True,
-        key="emp_sub_nav", label_visibility="collapsed"
-    )
+    # Submenu real fica no menu lateral (session_state["emp_sub_nav"]) — aqui só lê.
+    emp_nav = st.session_state.get("emp_sub_nav", EMP_SUBS[0])
+    st.markdown(f"#### {emp_nav}")
 
     # ══════════════════════════════════════════════════════════════════════════
     # SUB-ABA 1: EMPRÉSTIMOS CONCEDIDOS (Lucas é o credor)
@@ -2543,38 +2582,36 @@ else:
     ]
     if "nav_section" not in st.session_state:
         st.session_state["nav_section"] = _NAV[0]
+    if "intl_sub_nav" not in st.session_state:
+        st.session_state["intl_sub_nav"] = INTL_SUBS[0]
+    if "emp_sub_nav" not in st.session_state:
+        st.session_state["emp_sub_nav"] = EMP_SUBS[0]
 
-    # CSS: radio horizontal estilizado como abas
-    st.markdown("""
-    <style>
-    div[data-testid="stRadio"] > label { display: none; }
-    div[data-testid="stRadio"] div[role="radiogroup"] {
-        display: flex; flex-wrap: wrap; gap: 0;
-        border-bottom: 2px solid #d0d0d0; margin-bottom: 1.2rem;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        display: flex; align-items: center; padding: 9px 13px;
-        cursor: pointer; border-bottom: 3px solid transparent;
-        margin-bottom: -2px; color: #555; font-size: 0.82rem;
-        white-space: nowrap; background: transparent;
-        transition: color .15s;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
-        color: #1A4731;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
-        border-bottom: 3px solid #1A4731;
-        color: #1A4731; font-weight: 700;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] {
-        display: none;
-    }
-    </style>""", unsafe_allow_html=True)
+    # ── Menu lateral ───────────────────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown(f"""
+        <div class="side-brand">
+            <div class="mark">3P <span>FINANÇAS</span></div>
+            <div class="tag">Planejar · Poupar · Prosperar</div>
+        </div>""", unsafe_allow_html=True)
 
-    nav = st.radio(
-        "Seção", _NAV, horizontal=True,
-        key="nav_section", label_visibility="collapsed"
-    )
+        nav = st.radio("Seção", _NAV, key="nav_section", label_visibility="collapsed")
+
+        if nav == "🌍 Internacional":
+            st.markdown('<div class="side-sub-label">Ativos</div>', unsafe_allow_html=True)
+            st.radio("Sub-seção Internacional", INTL_SUBS,
+                     key="intl_sub_nav", label_visibility="collapsed")
+
+        if nav == "💳 Empréstimos":
+            st.markdown('<div class="side-sub-label">Tipo</div>', unsafe_allow_html=True)
+            st.radio("Sub-seção Empréstimos", EMP_SUBS,
+                     key="emp_sub_nav", label_visibility="collapsed")
+
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+        if st.button("🚪 Sair", use_container_width=True):
+            sb.auth.sign_out()
+            st.session_state.clear()
+            st.rerun()
 
     # ── Conteúdo da seção ativa ───────────────────────────────────────────────
     if   nav == "📊 Resumo":         tab_resumo(snap_rv, snap_rf, posicoes_rv)
@@ -2589,15 +2626,6 @@ else:
     elif nav == "📉 Evolução":       tab_evolucao(historico)
     elif nav == "💳 Empréstimos":    tab_emprestimos(emprestimos)
     elif nav == "🏢 Escritório":     tab_escritorio(investimentos)
-
-    # Logout
-    st.markdown("<br>", unsafe_allow_html=True)
-    cols = st.columns([5, 1])
-    with cols[1]:
-        if st.button("🚪 Sair", use_container_width=True):
-            sb.auth.sign_out()
-            st.session_state.clear()
-            st.rerun()
 
     st.markdown(
         f"<p style='text-align:center;color:#bbb;font-size:.72rem'>"
