@@ -115,6 +115,15 @@ def parse_brl(s: str) -> float:
         return 0.0
 
 
+def brl_input(v) -> str:
+    """Formata float pra string de input BRL sem prefixo: 1.234,56"""
+    try:
+        v = float(v or 0)
+    except Exception:
+        v = 0.0
+    return f"{abs(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 # ─── Dados (Supabase) ─────────────────────────────────────────────────────────
 def load_snapshot(tipo: str) -> dict:
     r = (sb.table("carteira_snapshots")
@@ -515,6 +524,88 @@ def escritorio_ctx() -> dict:
     return ctx
 
 
+# ─── Meus Empréstimos (Lucas é o devedor) ─────────────────────────────────────
+CORES_CREDOR = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
+
+
+def load_emprestimos_meus() -> list[dict]:
+    r = sb.table("emprestimos").select("*").eq("status", "ativo").order("credor").execute()
+    return r.data or []
+
+
+def _fmt_data_me(v) -> str:
+    try:
+        return datetime.strptime(str(v), "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return str(v or "—")
+
+
+def historico_meus_ctx() -> dict:
+    r = sb.table("emprestimos").select(
+        "id,titulo,credor,status,saldo_devedor,taxa_juros,historico_pagamentos").execute()
+    contratos = []
+    for r_h in (r.data or []):
+        hist = r_h.get("historico_pagamentos") or []
+        if not hist:
+            continue
+        is_quitado = (r_h.get("status") == "quitado") or (float(r_h.get("saldo_devedor") or 0) <= 0)
+        ultimo_idx = -1 if is_quitado else (len(hist) - 1)
+        indexed = list(enumerate(hist))[::-1]
+        pagamentos = []
+        for idx, hp in indexed:
+            pagamentos.append({
+                "idx": idx, "is_ultimo": (idx == ultimo_idx),
+                "data": _fmt_data_me(hp.get("data")),
+                "valor_pago": brl(hp.get("valor_pago")),
+                "juros": brl(hp.get("juros")),
+                "amortizacao": brl(hp.get("amortizacao")),
+                "saldo_depois": brl(hp.get("saldo_depois")),
+                "obs": str(hp.get("obs") or ""),
+            })
+        contratos.append({
+            "eid": r_h["id"], "titulo": r_h["titulo"], "credor": r_h.get("credor", ""),
+            "is_quitado": is_quitado,
+            "total_pago": brl(sum(float(h.get("valor_pago") or 0) for h in hist)),
+            "saldo_atual": brl(float(r_h.get("saldo_devedor") or 0)),
+            "n_pagamentos": len(hist),
+            "pagamentos": pagamentos,
+        })
+    return {"contratos": contratos, "vazio": not contratos}
+
+
+def meus_emprestimos_ctx() -> dict:
+    emp = load_emprestimos_meus()
+    ctx: dict = {"vazio": not emp}
+    if emp:
+        total_divida = sum(float(e["saldo_devedor"] or 0) for e in emp)
+        total_juros = sum(float(e["parcela_juros"] or 0) for e in emp)
+        grp: dict[str, float] = {}
+        for e in emp:
+            grp[e["credor"]] = grp.get(e["credor"], 0) + float(e["saldo_devedor"] or 0)
+        fatias = []
+        acumulado = 0.0
+        for i, (credor, valor) in enumerate(sorted(grp.items(), key=lambda x: -x[1])):
+            pct_v = valor / total_divida * 100 if total_divida else 0
+            fatias.append({
+                "credor": credor, "valor_fmt": brl(valor), "pct": pct_v,
+                "cor": CORES_CREDOR[i % len(CORES_CREDOR)],
+                "de": round(acumulado, 4), "ate": round(acumulado + pct_v, 4),
+            })
+            acumulado += pct_v
+        ctx.update({
+            "kpi_total_divida": brl(total_divida), "kpi_total_juros": brl(total_juros),
+            "kpi_n_contratos": len(emp), "fatias": fatias,
+            "contratos": [{
+                "id": e["id"], "credor": e["credor"], "titulo": e["titulo"],
+                "saldo": brl(float(e["saldo_devedor"] or 0)),
+                "taxa": f"{float(e['taxa_juros'] or 0) * 100:.2f}%".replace(".", ","),
+                "juros_mes": brl(float(e["parcela_juros"] or 0)),
+            } for e in emp],
+        })
+    ctx["historico"] = historico_meus_ctx()
+    return ctx
+
+
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 def current_user(request: Request):
     return request.session.get("user_email")
@@ -563,6 +654,8 @@ def content_for(section: str, sub: str | None) -> tuple[str, dict]:
         return "content_evolucao.html", evolucao_ctx()
     if section == "escritorio":
         return "content_escritorio.html", escritorio_ctx()
+    if section == "emprestimos" and sub == "meus":
+        return "content_meus_emprestimos.html", meus_emprestimos_ctx()
     item = next((n for n in NAV if n["id"] == section), NAV[0])
     label = item["label"]
     if item.get("subs") and sub:
@@ -648,3 +741,182 @@ def escritorio_excluir(request: Request):
     ctx = escritorio_ctx()
     return templates.TemplateResponse(request, "content_escritorio.html",
                                        {**ctx, "user_email": current_user(request)})
+
+
+def _meus_emprestimos_response(request: Request) -> HTMLResponse:
+    ctx = meus_emprestimos_ctx()
+    return templates.TemplateResponse(request, "content_meus_emprestimos.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+@app.post("/meus-emprestimos/novo", response_class=HTMLResponse)
+def meus_emprestimos_novo(request: Request, credor: str = Form(...), titulo: str = Form(...),
+                           saldo: str = Form(...), taxa: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    saldo_v = parse_brl(saldo)
+    try:
+        taxa_pct = float(taxa)
+    except Exception:
+        taxa_pct = 0.0
+    if credor and titulo and saldo_v > 0:
+        parcela = round(saldo_v * taxa_pct / 100, 2)
+        try:
+            sb.table("emprestimos").insert({
+                "credor": credor, "titulo": titulo,
+                "valor_originario": round(saldo_v, 2), "saldo_devedor": round(saldo_v, 2),
+                "taxa_juros": round(taxa_pct / 100, 6), "parcela_juros": parcela, "status": "ativo",
+            }).execute()
+        except Exception:
+            pass
+    return _meus_emprestimos_response(request)
+
+
+@app.post("/meus-emprestimos/pagamento", response_class=HTMLResponse)
+def meus_emprestimos_pagamento(request: Request, emprestimo_id: str = Form(...),
+                                valor: str = Form(...), data: str = Form(...),
+                                obs: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    emp = load_emprestimos_meus()
+    row = next((e for e in emp if str(e["id"]) == emprestimo_id), None)
+    if row:
+        saldo_at = float(row["saldo_devedor"] or 0)
+        juros_mes_v = float(row["parcela_juros"] or 0)
+        valor_pago_v = parse_brl(valor)
+        juros_no_pag = min(valor_pago_v, juros_mes_v)
+        amort_v = max(0.0, valor_pago_v - juros_no_pag)
+        novo_saldo_v = max(0.0, saldo_at - amort_v)
+        try:
+            res_h = sb.table("emprestimos").select("historico_pagamentos").eq("id", emprestimo_id).execute()
+            hist_v = (res_h.data[0].get("historico_pagamentos") or []) if res_h.data else []
+            hist_v.append({
+                "data": data, "valor_pago": round(valor_pago_v, 2),
+                "juros": round(juros_no_pag, 2), "amortizacao": round(amort_v, 2),
+                "saldo_antes": round(saldo_at, 2), "saldo_depois": round(novo_saldo_v, 2),
+                "obs": obs,
+            })
+            upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                   "parcela_juros": round(novo_saldo_v * float(row["taxa_juros"] or 0), 2),
+                   "historico_pagamentos": hist_v}
+            if novo_saldo_v == 0:
+                upd["status"] = "quitado"
+            sb.table("emprestimos").update(upd).eq("id", emprestimo_id).execute()
+        except Exception:
+            pass
+    return _meus_emprestimos_response(request)
+
+
+@app.post("/meus-emprestimos/quitar", response_class=HTMLResponse)
+def meus_emprestimos_quitar(request: Request, emprestimo_id: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        sb.table("emprestimos").update(
+            {"status": "quitado", "saldo_devedor": 0.0, "parcela_juros": 0.0}
+        ).eq("id", emprestimo_id).execute()
+    except Exception:
+        pass
+    return _meus_emprestimos_response(request)
+
+
+@app.get("/meus-emprestimos/linha-editar/{eid}/{idx}", response_class=HTMLResponse)
+def meus_linha_editar(request: Request, eid: str, idx: int):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    r = sb.table("emprestimos").select("historico_pagamentos").eq("id", eid).execute()
+    hist = (r.data[0].get("historico_pagamentos") or []) if r.data else []
+    if idx >= len(hist):
+        return HTMLResponse("")
+    hp = hist[idx]
+    return templates.TemplateResponse(request, "_linha_me_editar.html", {
+        "eid": eid, "idx": idx,
+        "data_iso": hp.get("data") or "",
+        "valor_pago": brl_input(hp.get("valor_pago")),
+        "juros": brl_input(hp.get("juros")),
+        "obs": hp.get("obs") or "",
+    })
+
+
+@app.get("/meus-emprestimos/linha-normal/{eid}/{idx}", response_class=HTMLResponse)
+def meus_linha_normal(request: Request, eid: str, idx: int):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    r = sb.table("emprestimos").select(
+        "id,status,saldo_devedor,historico_pagamentos").eq("id", eid).execute()
+    if not r.data:
+        return HTMLResponse("")
+    r_h = r.data[0]
+    hist = r_h.get("historico_pagamentos") or []
+    if idx >= len(hist):
+        return HTMLResponse("")
+    is_quitado = (r_h.get("status") == "quitado") or (float(r_h.get("saldo_devedor") or 0) <= 0)
+    ultimo_idx = -1 if is_quitado else (len(hist) - 1)
+    hp = hist[idx]
+    pagamento = {
+        "idx": idx, "is_ultimo": (idx == ultimo_idx),
+        "data": _fmt_data_me(hp.get("data")), "valor_pago": brl(hp.get("valor_pago")),
+        "juros": brl(hp.get("juros")), "amortizacao": brl(hp.get("amortizacao")),
+        "saldo_depois": brl(hp.get("saldo_depois")), "obs": str(hp.get("obs") or ""),
+    }
+    return templates.TemplateResponse(request, "_linha_me_normal.html",
+                                       {"eid": eid, "pagamento": pagamento})
+
+
+@app.post("/meus-emprestimos/linha-salvar/{eid}/{idx}", response_class=HTMLResponse)
+def meus_linha_salvar(request: Request, eid: str, idx: int, data: str = Form(...),
+                       valor: str = Form(...), juros: str = Form(...), obs: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        r = sb.table("emprestimos").select("historico_pagamentos,taxa_juros").eq("id", eid).execute()
+        if r.data:
+            row = r.data[0]
+            hist = row.get("historico_pagamentos") or []
+            taxa_c = float(row.get("taxa_juros") or 0)
+            if idx < len(hist):
+                hp = hist[idx]
+                novo_val_pago = round(parse_brl(valor), 2)
+                juros_digitado = round(parse_brl(juros), 2)
+                juros_aplicado = round(min(novo_val_pago, max(0.0, juros_digitado)), 2)
+                nova_amort = round(max(0.0, novo_val_pago - juros_aplicado), 2)
+                saldo_antes_e = float(hp.get("saldo_antes") or 0)
+                novo_saldo_e = round(max(0.0, saldo_antes_e - nova_amort), 2)
+                hist[idx] = {
+                    "data": data, "valor_pago": novo_val_pago, "juros": juros_aplicado,
+                    "amortizacao": nova_amort, "saldo_antes": round(saldo_antes_e, 2),
+                    "saldo_depois": novo_saldo_e, "obs": obs,
+                }
+                novo_parcela_e = round(novo_saldo_e * taxa_c, 2)
+                sb.table("emprestimos").update({
+                    "historico_pagamentos": hist, "saldo_devedor": novo_saldo_e,
+                    "parcela_juros": novo_parcela_e,
+                    "status": "quitado" if novo_saldo_e <= 0 else "ativo",
+                }).eq("id", eid).execute()
+    except Exception:
+        pass
+    return _meus_emprestimos_response(request)
+
+
+@app.post("/meus-emprestimos/linha-excluir/{eid}/{idx}", response_class=HTMLResponse)
+def meus_linha_excluir(request: Request, eid: str, idx: int):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        r = sb.table("emprestimos").select("historico_pagamentos,taxa_juros").eq("id", eid).execute()
+        if r.data:
+            row = r.data[0]
+            hist = row.get("historico_pagamentos") or []
+            taxa_c = float(row.get("taxa_juros") or 0)
+            if idx < len(hist):
+                removido = hist.pop(idx)
+                novo_saldo_d = round(float(removido.get("saldo_antes") or 0), 2)
+                novo_parcela_d = round(novo_saldo_d * taxa_c, 2)
+                sb.table("emprestimos").update({
+                    "historico_pagamentos": hist, "saldo_devedor": novo_saldo_d,
+                    "parcela_juros": novo_parcela_d,
+                    "status": "quitado" if novo_saldo_d <= 0 else "ativo",
+                }).eq("id", eid).execute()
+    except Exception:
+        pass
+    return _meus_emprestimos_response(request)

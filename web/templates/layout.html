@@ -188,6 +188,28 @@ details.painel > summary::before { content:"▸"; color:var(--muted-soft); trans
 details.painel[open] > summary::before { content:"▾"; }
 details.painel .painel-corpo { margin-top:12px; }
 
+/* ── Histórico de pagamentos por contrato (Empréstimos) ── */
+.contrato-hist { border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+.contrato-hist.quitado { background:rgba(27,122,52,.05); }
+.contrato-hist-head { margin-bottom:10px; font-size:.9rem; }
+.muted-info { color:var(--muted); font-size:.85rem; }
+.acoes-col { white-space:nowrap; text-align:right; }
+.btn-editar, .btn-excluir {
+  border:none; border-radius:8px; font-size:.68rem; font-weight:700; letter-spacing:.04em;
+  padding:6px 10px; cursor:pointer; color:#fff; margin-left:4px; font-family:inherit;
+}
+.btn-editar { background:#1d4ed8; }
+.btn-editar:hover { background:#1e40af; }
+.btn-excluir { background:#dc2626; }
+.btn-excluir:hover { background:#b91c1c; }
+.linha-edicao td { background:var(--bg); }
+.form-inline-edicao { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.form-inline-edicao input {
+  padding:7px 9px; border:1px solid var(--line); border-radius:8px; font-size:.82rem;
+  font-family:inherit; flex:1 1 120px; min-width:100px;
+}
+.btn-sm { padding:7px 12px; font-size:.78rem; }
+
 @media (max-width:860px) {
   .shell { flex-direction:column; }
   .sidebar { width:100%; height:auto; position:relative; }

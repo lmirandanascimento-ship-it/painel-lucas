@@ -1,0 +1,37 @@
+{% macro linha_pagamento(eid, p) %}
+<tr id="pag-row-{{ eid }}-{{ p.idx }}">
+  <td>{{ p.data }}</td>
+  <td>{{ p.valor_pago }}</td>
+  <td>{{ p.juros }}</td>
+  <td>{{ p.amortizacao }}</td>
+  <td>{{ p.saldo_depois }}</td>
+  <td>{{ p.obs }}</td>
+  <td class="acoes-col">
+    {% if p.is_ultimo %}
+      <button type="button" class="btn-editar" hx-get="/meus-emprestimos/linha-editar/{{ eid }}/{{ p.idx }}"
+              hx-target="#pag-row-{{ eid }}-{{ p.idx }}" hx-swap="outerHTML">EDITAR</button>
+      <button type="button" class="btn-excluir" hx-post="/meus-emprestimos/linha-excluir/{{ eid }}/{{ p.idx }}"
+              hx-target="#meus-conteudo" hx-swap="outerHTML"
+              hx-confirm="Excluir o pagamento de {{ p.valor_pago }} em {{ p.data }}? Essa ação não pode ser desfeita.">EXCLUIR</button>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro linha_pagamento_editar(eid, idx, data_iso, valor_pago, juros, obs) %}
+<tr id="pag-row-{{ eid }}-{{ idx }}" class="linha-edicao">
+  <td colspan="7">
+    <form hx-post="/meus-emprestimos/linha-salvar/{{ eid }}/{{ idx }}" hx-target="#meus-conteudo"
+          hx-swap="outerHTML" class="form-inline-edicao">
+      <input type="date" name="data" value="{{ data_iso }}" required>
+      <input type="text" name="valor" value="{{ valor_pago }}" placeholder="Valor pago">
+      <input type="text" name="juros" value="{{ juros }}" placeholder="Juros ref.">
+      <input type="text" name="obs" value="{{ obs }}" placeholder="Observação">
+      <button type="submit" class="btn-primario btn-sm">💾 Salvar</button>
+      <button type="button" class="btn-secundario btn-sm"
+              hx-get="/meus-emprestimos/linha-normal/{{ eid }}/{{ idx }}"
+              hx-target="#pag-row-{{ eid }}-{{ idx }}" hx-swap="outerHTML">❌ Cancelar</button>
+    </form>
+  </td>
+</tr>
+{% endmacro %}

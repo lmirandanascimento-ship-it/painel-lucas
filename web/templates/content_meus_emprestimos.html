@@ -1,0 +1,175 @@
+{% import "_macros_me.html" as m %}
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "" }}</b></div>
+</div>
+<h1 class="hello">💳 Meus Empréstimos</h1>
+
+<div id="meus-conteudo">
+  {% if vazio %}
+    <div class="card"><p style="color:var(--muted)">Nenhum empréstimo ativo cadastrado.</p></div>
+  {% else %}
+    <div class="kpi-row">
+      <div class="kpi gold">
+        <div class="label">Total de Dívidas</div>
+        <div class="value">{{ kpi_total_divida }}</div>
+      </div>
+      <div class="kpi neg">
+        <div class="label">Juros Mensais</div>
+        <div class="value">{{ kpi_total_juros }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Contratos Ativos</div>
+        <div class="value">{{ kpi_n_contratos }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Por Credor</h3>
+        <span class="tag">Saldo devedor</span>
+      </div>
+      <div class="donut-wrap">
+        <div class="donut" style="background:conic-gradient(
+          {% for f in fatias %}{{ f.cor }} {{ f.de }}% {{ f.ate }}%{{ ", " if not loop.last }}{% endfor %}
+        )">
+          <div class="donut-total">{{ kpi_total_divida }}<small>total</small></div>
+        </div>
+        <div class="legend">
+          {% for f in fatias %}
+            <div class="legend-row">
+              <span class="dot" style="background:{{ f.cor }}"></span>
+              <span class="name">{{ f.credor }}</span>
+              <span class="pct">{{ "%.1f"|format(f.pct) }}%</span>
+              <span class="valor">{{ f.valor_fmt }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head"><h3>Contratos</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Credor</th><th>Título</th><th>Saldo Devedor</th><th>Taxa a.m.</th><th>Juros/Mês</th></tr></thead>
+          <tbody>
+            {% for c in contratos %}
+              <tr><td>{{ c.credor }}</td><td>{{ c.titulo }}</td><td>{{ c.saldo }}</td>
+                  <td>{{ c.taxa }}</td><td>{{ c.juros_mes }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <details class="painel">
+      <summary>💸 Registrar Pagamento</summary>
+      <div class="painel-corpo">
+        <form hx-post="/meus-emprestimos/pagamento" hx-target="#meus-conteudo" hx-swap="outerHTML">
+          <div class="campo" style="margin-bottom:12px">
+            <label for="pag-contrato">Contrato</label>
+            <select id="pag-contrato" name="emprestimo_id">
+              {% for c in contratos %}<option value="{{ c.id }}">{{ c.titulo }} ({{ c.credor }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-grid">
+            <div class="campo">
+              <label for="pag-valor">Valor pago (R$)</label>
+              <input type="text" id="pag-valor" name="valor" placeholder="ex: 800,00" required>
+            </div>
+            <div class="campo">
+              <label for="pag-data">Data do pagamento</label>
+              <input type="date" id="pag-data" name="data" required>
+            </div>
+          </div>
+          <div class="campo" style="margin:12px 0">
+            <label for="pag-obs">Observação</label>
+            <input type="text" id="pag-obs" name="obs">
+          </div>
+          <button type="submit" class="btn-primario">✅ Confirmar Pagamento</button>
+        </form>
+      </div>
+    </details>
+
+    <details class="painel">
+      <summary>✅ Marcar Contrato como Quitado</summary>
+      <div class="painel-corpo">
+        <form hx-post="/meus-emprestimos/quitar" hx-target="#meus-conteudo" hx-swap="outerHTML">
+          <div class="campo" style="margin-bottom:12px">
+            <label for="quit-contrato">Contrato</label>
+            <select id="quit-contrato" name="emprestimo_id">
+              {% for c in contratos %}<option value="{{ c.id }}">{{ c.titulo }} ({{ c.credor }})</option>{% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn-perigo"
+                  hx-confirm="Marcar esse contrato como quitado? O saldo será zerado. Essa ação não pode ser desfeita.">
+            🏁 Confirmar Quitação
+          </button>
+        </form>
+      </div>
+    </details>
+  {% endif %}
+
+  <details class="painel" {{ "open" if vazio else "" }}>
+    <summary>➕ Cadastrar Novo Empréstimo</summary>
+    <div class="painel-corpo">
+      <form hx-post="/meus-emprestimos/novo" hx-target="#meus-conteudo" hx-swap="outerHTML">
+        <div class="form-grid">
+          <div class="campo">
+            <label for="ne-credor">Credor</label>
+            <input type="text" id="ne-credor" name="credor" required>
+          </div>
+          <div class="campo">
+            <label for="ne-titulo">Título / Descrição</label>
+            <input type="text" id="ne-titulo" name="titulo" required>
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="campo">
+            <label for="ne-saldo">Saldo devedor (R$)</label>
+            <input type="text" id="ne-saldo" name="saldo" value="0,00" placeholder="ex: 50.000,00">
+          </div>
+          <div class="campo">
+            <label for="ne-taxa">Taxa a.m. (%)</label>
+            <input type="number" id="ne-taxa" name="taxa" min="0" max="100" step="0.01" value="0">
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <button type="submit" class="btn-primario">💾 Cadastrar Empréstimo</button>
+        </div>
+      </form>
+    </div>
+  </details>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-head"><h3>📜 Histórico de Pagamentos por Contrato</h3></div>
+    {% if historico.vazio %}
+      <p style="color:var(--muted)">Nenhum pagamento via sistema ainda.</p>
+    {% else %}
+      {% for c in historico.contratos %}
+        <div class="contrato-hist {{ 'quitado' if c.is_quitado else '' }}">
+          <div class="contrato-hist-head">
+            <b>{{ "✅" if c.is_quitado else "📋" }} {{ c.titulo }}</b>
+            <span class="muted-info">
+              · {{ c.credor }} · {{ c.n_pagamentos }} pagamento(s) ·
+              Total pago: <b>{{ c.total_pago }}</b> · Saldo atual: <b>{{ c.saldo_atual }}</b>
+            </span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Data</th><th>Valor Pago</th><th>Juros</th><th>Amortização</th>
+                    <th>Saldo Após</th><th>Obs</th><th></th></tr>
+              </thead>
+              <tbody>
+                {% for p in c.pagamentos %}
+                  {{ m.linha_pagamento(c.eid, p) }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
