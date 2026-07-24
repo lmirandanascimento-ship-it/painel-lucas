@@ -59,8 +59,24 @@
       <form hx-post="/escritorio/lancar" hx-target="#escritorio-conteudo" hx-swap="outerHTML">
         <div class="form-grid">
           <div class="campo">
-            <label for="em-mes">Mês de referência</label>
-            <input type="month" id="em-mes" name="mes" required>
+            <label for="em-mes-sel">Mês de referência</label>
+            <div style="display:flex; gap:8px">
+              <select id="em-mes-sel" onchange="atualizaMesRef()" style="flex:1.4">
+                {% set meses_nomes = ["01,Janeiro", "02,Fevereiro", "03,Março", "04,Abril",
+                                       "05,Maio", "06,Junho", "07,Julho", "08,Agosto",
+                                       "09,Setembro", "10,Outubro", "11,Novembro", "12,Dezembro"] %}
+                {% for mn in meses_nomes %}
+                  {% set mval, mlabel = mn.split(",") %}
+                  <option value="{{ mval }}" {{ "selected" if mval == "%02d"|format(mes_atual) }}>{{ mlabel }}</option>
+                {% endfor %}
+              </select>
+              <select id="em-ano-sel" onchange="atualizaMesRef()" style="flex:1">
+                {% for a in anos_ref %}
+                  <option value="{{ a }}" {{ "selected" if a == ano_atual }}>{{ a }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <input type="hidden" id="em-mes" name="mes" required>
           </div>
           <div class="campo">
             <label for="em-tipo">Tipo</label>
@@ -110,6 +126,13 @@
     var s = v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return (neg ? "-R$ " : "R$ ") + s;
   }
+  window.atualizaMesRef = function () {
+    var mesEl = document.getElementById("em-mes-sel");
+    var anoEl = document.getElementById("em-ano-sel");
+    var hiddenEl = document.getElementById("em-mes");
+    if (!mesEl || !anoEl || !hiddenEl) return;
+    hiddenEl.value = anoEl.value + "-" + mesEl.value;
+  };
   window.atualizaPreviewEscritorio = function () {
     var tipoEl = document.getElementById("em-tipo");
     var valorEl = document.getElementById("em-valor");
@@ -126,6 +149,7 @@
       " (= último " + fmtBRL(ULTIMO_SALDO) + (ehRetirada ? " − " : " + ") +
       "valor " + fmtBRL(valor) + " + rend " + fmtBRL(rend) + ")";
   };
+  atualizaMesRef();
   atualizaPreviewEscritorio();
 })();
 </script>

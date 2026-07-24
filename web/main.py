@@ -459,9 +459,12 @@ def _ultimo_saldo_escritorio(inv_plot: list[dict]) -> float:
 def escritorio_ctx() -> dict:
     inv = load_investimentos()
     inv_plot = [i for i in inv if float(i.get("saldo_final") or 0) > 0]
+    _agora = agora_br()
     ctx = {
         "vazio": not inv_plot, "tipos": TIPOS_ESCRITORIO,
         "ultimo_saldo": _ultimo_saldo_escritorio(inv_plot), "taxa": TAXA_ESCRITORIO,
+        "ano_atual": _agora.year, "mes_atual": _agora.month,
+        "anos_ref": list(range(_agora.year + 1, _agora.year - 8, -1)),
     }
     if not inv_plot:
         return ctx
