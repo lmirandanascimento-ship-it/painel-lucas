@@ -617,7 +617,9 @@ def devedor_detalhe_ctx(devedor_id) -> dict:
         })
 
     historico_contratos = []
-    for e in sorted(emp, key=lambda e: e["titulo"]):
+    # Ativos primeiro (ordem alfabética), quitados por último (ordem alfabética).
+    for e in sorted(emp, key=lambda e: (
+            e["status"] == "quitado" or float(e["saldo_devedor"] or 0) <= 0, e["titulo"])):
         pags_e = [p for p in pagtos_dev if p["emprestimo_id"] == e["id"]]
         if not pags_e:
             continue

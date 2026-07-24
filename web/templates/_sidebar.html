@@ -1,4 +1,7 @@
 <aside id="sidebar" class="sidebar"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher/expandir menu">
+    <span class="arrow">◂</span>
+  </button>
   <div class="side-brand">
     <div class="mark">3P <span>FINANÇAS</span></div>
     <div class="tag">Planejar · Poupar · Prosperar</div>
@@ -22,5 +25,5 @@
       {% endif %}
     {% endfor %}
   </nav>
-  <a href="/logout" class="logout-btn">🚪 Sair</a>
+  <a href="/logout" class="logout-btn"><span class="ico">🚪</span> <span class="txt">Sair</span></a>
 </aside>

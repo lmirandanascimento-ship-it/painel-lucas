@@ -22,6 +22,30 @@ body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans)
 .sidebar {
   width:264px; flex:0 0 auto; background:var(--sidebar-bg); border-right:1px solid var(--line);
   padding:22px 16px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh;
+  transition:width .18s ease, padding .18s ease;
+}
+.sidebar-toggle {
+  position:absolute; top:22px; right:-12px; width:24px; height:24px; border-radius:50%;
+  background:var(--bg-card); border:1px solid var(--line); box-shadow:var(--shadow);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:5;
+  color:var(--muted); font-size:.7rem; padding:0; line-height:1;
+}
+.sidebar-toggle:hover { color:var(--verde); border-color:var(--verde); }
+.sidebar-toggle .arrow { transition:transform .18s ease; display:inline-block; }
+body.sidebar-collapsed .sidebar-toggle .arrow { transform:rotate(180deg); }
+@media (min-width:861px) {
+  body.sidebar-collapsed .sidebar { width:76px; padding:22px 10px; }
+  body.sidebar-collapsed .side-brand .tag,
+  body.sidebar-collapsed .side-brand .mark span,
+  body.sidebar-collapsed .nav-link .lbl,
+  body.sidebar-collapsed .sub-list,
+  body.sidebar-collapsed .logout-btn .txt { display:none; }
+  body.sidebar-collapsed .side-brand { text-align:center; padding:0 0 20px; }
+  body.sidebar-collapsed .nav-link { justify-content:center; padding:9px 4px; }
+  body.sidebar-collapsed .logout-btn { padding:10px 4px; }
+}
+@media (max-width:860px) {
+  .sidebar-toggle { display:none; }
 }
 .side-brand { padding:0 8px 20px; }
 .side-brand .mark { font-family:var(--serif); font-weight:700; font-size:1.3rem; color:var(--verde); }
@@ -253,5 +277,17 @@ details.painel .painel-corpo { margin-top:12px; }
       {{ content_html | safe }}
     </main>
   </div>
+<script>
+(function () {
+  function toggleSidebar() {
+    var collapsed = document.body.classList.toggle("sidebar-collapsed");
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0");
+  }
+  window.toggleSidebar = toggleSidebar;
+  if (localStorage.getItem("sidebarCollapsed") === "1") {
+    document.body.classList.add("sidebar-collapsed");
+  }
+})();
+</script>
 </body>
 </html>
