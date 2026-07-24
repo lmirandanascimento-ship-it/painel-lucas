@@ -6,6 +6,7 @@ Módulos ainda não portados mostram uma tela "em construção" honesta em vez
 de fingir que existem.
 """
 import os
+import re
 import secrets
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -105,6 +106,12 @@ def usd(v, sign: bool = False) -> str:
 
 def pct(v: float) -> str:
     return f"{'+' if v >= 0 else ''}{v:.2f}%".replace(".", ",")
+
+
+def natural_key(s):
+    """Chave de ordenação alfabética "natural": números embutidos no texto
+    comparam pelo valor (Emp. 2 antes de Emp. 10), não caractere a caractere."""
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(s or ""))]
 
 
 def parse_brl(s: str) -> float:
@@ -579,10 +586,7 @@ def devedor_detalhe_ctx(devedor_id) -> dict:
         return {"devedor_vazio": True}
 
     emp = [e for e in load_emprestimos_concedidos() if str(e["devedor_id"]) == str(devedor_id)]
-    ativos = sorted(
-        [e for e in emp if e["status"] == "ativo"],
-        key=lambda e: (e.get("dia_vencimento") is None, e.get("dia_vencimento") or 0),
-    )
+    ativos = sorted([e for e in emp if e["status"] == "ativo"], key=lambda e: natural_key(e["titulo"]))
     quitados = [e for e in emp if e["status"] == "quitado"]
     emp_ids = {e["id"] for e in emp}
     pagtos_dev = [p for p in load_pagamentos_recebidos() if p["emprestimo_id"] in emp_ids]
@@ -607,7 +611,7 @@ def devedor_detalhe_ctx(devedor_id) -> dict:
         })
 
     quitados_lista = []
-    for e in sorted(quitados, key=lambda e: e.get("data_emprestimo") or ""):
+    for e in sorted(quitados, key=lambda e: natural_key(e["titulo"])):
         pags_e = [p for p in pagtos_dev if p["emprestimo_id"] == e["id"]]
         data_quit = max((p["data_pagamento"] for p in pags_e), default=None)
         quitados_lista.append({
@@ -617,9 +621,9 @@ def devedor_detalhe_ctx(devedor_id) -> dict:
         })
 
     historico_contratos = []
-    # Ativos primeiro (ordem alfabética), quitados por último (ordem alfabética).
+    # Ativos primeiro (ordem alfabética natural), quitados por último (idem).
     for e in sorted(emp, key=lambda e: (
-            e["status"] == "quitado" or float(e["saldo_devedor"] or 0) <= 0, e["titulo"])):
+            e["status"] == "quitado" or float(e["saldo_devedor"] or 0) <= 0, natural_key(e["titulo"]))):
         pags_e = [p for p in pagtos_dev if p["emprestimo_id"] == e["id"]]
         if not pags_e:
             continue
@@ -706,8 +710,12 @@ def _fmt_data_me(v) -> str:
 def historico_meus_ctx() -> dict:
     r = sb.table("emprestimos").select(
         "id,titulo,credor,status,saldo_devedor,taxa_juros,historico_pagamentos").execute()
+    # Ativos primeiro (ordem alfabética natural), quitados por último (idem).
+    linhas = sorted(r.data or [], key=lambda e: (
+        e.get("status") == "quitado" or float(e.get("saldo_devedor") or 0) <= 0,
+        natural_key(e["titulo"])))
     contratos = []
-    for r_h in (r.data or []):
+    for r_h in linhas:
         hist = r_h.get("historico_pagamentos") or []
         if not hist:
             continue
@@ -766,7 +774,7 @@ def meus_emprestimos_ctx() -> dict:
                 "saldo": brl(float(e["saldo_devedor"] or 0)),
                 "taxa": f"{float(e['taxa_juros'] or 0) * 100:.2f}%".replace(".", ","),
                 "juros_mes": brl(float(e["parcela_juros"] or 0)),
-            } for e in emp],
+            } for e in sorted(emp, key=lambda e: natural_key(e["titulo"]))],
         })
     ctx["historico"] = historico_meus_ctx()
     return ctx
