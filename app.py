@@ -22,6 +22,10 @@ VERDE2       = "#2D6A4F"
 OURO         = "#B8860B"
 CAPITAL_BASE = 684_160.69
 BRAPI_TOKEN  = "o1ikT8zCSyqQUkNYz224ho"
+# Câmbio de referência p/ custo (Investido) dos ativos internacionais — o câmbio
+# real embutido nos snapshots é desconhecido/inconsistente por operação. Usar
+# R$5,00 fixo até o Leandro confirmar o câmbio praticado em cada compra.
+TAXA_CAMBIO_REF_USD = 5.00
 INTL_CLASSES = {"ETF USA", "REITs", "Stocks"}
 CLASS_COLORS = {
     "Ações BR": "#22C55E", "ETF BR": "#16A34A", "FII": "#3B82F6",
@@ -806,10 +810,12 @@ def tab_internacional(snap_rv, posicoes_rv):
             tot_inv = 0.0; tot_at = 0.0
             for p in posicoes:
                 nome     = p.get("nome", "")
-                inv_brl  = float(p.get("investido") or 0)
                 at_snap  = float(p.get("atual") or 0)
                 qtd      = float(p.get("qtd") or 0)
                 pm_usd   = float(p.get("preco_pago_usd") or p.get("preco_atual_usd") or 0)
+                # Custo em R$ recalculado com câmbio de referência fixo (não o
+                # câmbio embutido no snapshot, que é desconhecido/inconsistente).
+                inv_brl  = round(qtd * pm_usd * TAXA_CAMBIO_REF_USD, 2)
                 p_live   = prices.get(nome)
                 at_live  = p_live * qtd * usd_brl if p_live and qtd else at_snap
                 ren      = (at_live / inv_brl - 1) * 100 if inv_brl else 0
@@ -832,7 +838,11 @@ def tab_internacional(snap_rv, posicoes_rv):
                          "Ganho (R$)":brl(tot_at-tot_inv,sign=True),"%":pct(ren_t)})
             st.dataframe(pd.DataFrame(rows), use_container_width=True,
                          hide_index=True, height=300)
-    st.caption(f"USD/BRL: {usd_brl:.4f} · Cotações: BRAPI")
+    st.caption(
+        f"USD/BRL hoje: {usd_brl:.4f} (usado na Posição Atual) · "
+        f"Câmbio de referência do custo: R$ {TAXA_CAMBIO_REF_USD:.2f} "
+        f"(provisório, até confirmar o câmbio real de cada compra) · Cotações: BRAPI"
+    )
 
 
 # ─── TAB genérica RF ─────────────────────────────────────────────────────────
