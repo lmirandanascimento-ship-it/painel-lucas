@@ -527,6 +527,164 @@ def escritorio_ctx() -> dict:
     return ctx
 
 
+# ─── Empréstimos Concedidos (Lucas é o credor) ────────────────────────────────
+def load_devedores() -> list[dict]:
+    r = sb.table("devedores").select("*").eq("ativo", True).order("nome").execute()
+    return r.data or []
+
+
+def load_emprestimos_concedidos() -> list[dict]:
+    r = sb.table("emprestimos_concedidos").select("*, devedores(nome, categoria)").execute()
+    out = []
+    for item in (r.data or []):
+        dev = item.pop("devedores", None) or {}
+        item["devedor_nome"] = dev.get("nome", "")
+        out.append(item)
+    return out
+
+
+def load_pagamentos_recebidos(emprestimo_id=None) -> list[dict]:
+    q = sb.table("pagamentos_recebidos").select("*")
+    if emprestimo_id is not None:
+        q = q.eq("emprestimo_id", emprestimo_id)
+    data = q.execute().data or []
+    data.sort(key=lambda p: (p.get("data_pagamento") or "", p.get("id") or 0), reverse=True)
+    return data
+
+
+def _fmt_data_emp(v) -> str:
+    try:
+        return datetime.strptime(str(v), "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return "—"
+
+
+def _kpis_globais_emp_ctx() -> dict:
+    emp = load_emprestimos_concedidos()
+    pagtos = load_pagamentos_recebidos()
+    ativos = [e for e in emp if e.get("status") == "ativo"]
+    total_saldo = sum(float(e["saldo_devedor"] or 0) for e in ativos)
+    total_juros = sum(float(e["parcela_juros"] or 0) for e in ativos)
+    total_receb = sum(float(p["valor_pago"] or 0) for p in pagtos)
+    return {
+        "kpi_g_saldo": brl(total_saldo), "kpi_g_juros": brl(total_juros),
+        "kpi_g_contratos": len(ativos), "kpi_g_recebido": brl(total_receb),
+    }
+
+
+def devedor_detalhe_ctx(devedor_id) -> dict:
+    devedores = load_devedores()
+    dev = next((d for d in devedores if str(d["id"]) == str(devedor_id)), None)
+    if not dev:
+        return {"devedor_vazio": True}
+
+    emp = [e for e in load_emprestimos_concedidos() if str(e["devedor_id"]) == str(devedor_id)]
+    ativos = sorted(
+        [e for e in emp if e["status"] == "ativo"],
+        key=lambda e: (e.get("dia_vencimento") is None, e.get("dia_vencimento") or 0),
+    )
+    quitados = [e for e in emp if e["status"] == "quitado"]
+    emp_ids = {e["id"] for e in emp}
+    pagtos_dev = [p for p in load_pagamentos_recebidos() if p["emprestimo_id"] in emp_ids]
+
+    saldo_d = sum(float(e["saldo_devedor"] or 0) for e in ativos)
+    juros_d = sum(float(e["parcela_juros"] or 0) for e in ativos)
+    receb_d = sum(float(p["valor_pago"] or 0) for p in pagtos_dev)
+
+    contratos_ativos = []
+    for e in ativos:
+        orig = float(e["valor_original"] or 0)
+        saldo = float(e["saldo_devedor"] or 0)
+        amort_v = max(0.0, orig - saldo)
+        amort_p = round(min(100.0, amort_v / orig * 100), 1) if orig > 0 else 0.0
+        dv = e.get("dia_vencimento")
+        contratos_ativos.append({
+            "id": e["id"], "titulo": e["titulo"],
+            "saldo": brl(saldo), "juros": brl(float(e["parcela_juros"] or 0)),
+            "dia_str": f"Dia {int(dv)}" if dv else "—",
+            "amort_pct": amort_p, "amort_valor": brl(amort_v),
+            "valor_original": brl(orig),
+        })
+
+    quitados_lista = []
+    for e in sorted(quitados, key=lambda e: e.get("data_emprestimo") or ""):
+        pags_e = [p for p in pagtos_dev if p["emprestimo_id"] == e["id"]]
+        data_quit = max((p["data_pagamento"] for p in pags_e), default=None)
+        quitados_lista.append({
+            "titulo": e["titulo"], "valor_original": brl(float(e["valor_original"] or 0)),
+            "data_emp": _fmt_data_emp(e.get("data_emprestimo")),
+            "data_quit": _fmt_data_emp(data_quit) if data_quit else "—",
+        })
+
+    historico_contratos = []
+    for e in sorted(emp, key=lambda e: e["titulo"]):
+        pags_e = [p for p in pagtos_dev if p["emprestimo_id"] == e["id"]]
+        if not pags_e:
+            continue
+        is_quitado_c = (e["status"] == "quitado") or (float(e["saldo_devedor"] or 0) <= 0)
+        pags_e_desc = sorted(pags_e, key=lambda p: (p.get("data_pagamento") or "", p.get("id") or 0),
+                              reverse=True)
+        ultimo_pag_id = None if is_quitado_c else pags_e_desc[0]["id"]
+
+        # Saldo retroativo p/ pagamentos importados com saldo_depois nulo (só p/ ativos)
+        saldo_retro = {}
+        if not is_quitado_c:
+            val_orig = float(e["valor_original"] or 0)
+            cum = 0.0
+            for p in sorted(pags_e, key=lambda p: (p.get("data_pagamento") or "", p.get("id") or 0)):
+                cum += float(p.get("amortizacao") or 0)
+                if p.get("saldo_depois") is None:
+                    saldo_retro[p["id"]] = round(max(0.0, val_orig - cum), 2)
+
+        linhas = []
+        for p in pags_e_desc:
+            obs = str(p.get("observacao") or "")
+            if p.get("tipo", "amortizacao") == "juros":
+                obs = "🔵 Somente Juros" + (f" · {obs}" if obs else "")
+            saldo_dep = p.get("saldo_depois")
+            if saldo_dep is None:
+                saldo_dep_fmt = brl(saldo_retro[p["id"]]) if p["id"] in saldo_retro else "—"
+            else:
+                saldo_dep_fmt = brl(saldo_dep)
+            linhas.append({
+                "id": p["id"], "is_ultimo": (p["id"] == ultimo_pag_id),
+                "data": _fmt_data_emp(p.get("data_pagamento")),
+                "valor_pago": brl(p.get("valor_pago")), "juros": brl(p.get("juros")),
+                "amortizacao": brl(p.get("amortizacao")), "saldo_depois": saldo_dep_fmt,
+                "obs": obs,
+            })
+        historico_contratos.append({
+            "eid": e["id"], "titulo": e["titulo"], "is_quitado": is_quitado_c,
+            "total_pago": brl(sum(float(p["valor_pago"] or 0) for p in pags_e)),
+            "saldo_atual": brl(float(e["saldo_devedor"] or 0)),
+            "n_pagamentos": len(pags_e), "pagamentos": linhas,
+        })
+
+    return {
+        "devedor_vazio": False, "devedor_id": dev["id"], "devedor_nome": dev["nome"],
+        "kpi_d_saldo": brl(saldo_d), "kpi_d_juros": brl(juros_d), "kpi_d_recebido": brl(receb_d),
+        "contratos_ativos": contratos_ativos, "n_contratos_ativos": len(contratos_ativos),
+        "quitados": quitados_lista, "n_quitados": len(quitados_lista),
+        "historico_contratos": historico_contratos, "historico_vazio": not historico_contratos,
+        "contratos_para_excluir": [{"id": e["id"], "titulo": e["titulo"]} for e in (ativos + quitados)],
+        "hoje_iso": agora_br().date().isoformat(),
+    }
+
+
+def emp_concedidos_ctx() -> dict:
+    devedores = load_devedores()
+    ctx: dict = {"devedores": devedores, "devedores_vazio": not devedores}
+    ctx.update(_kpis_globais_emp_ctx())
+    if devedores:
+        primeiro_id = devedores[0]["id"]
+        ctx.update(devedor_detalhe_ctx(primeiro_id))
+        ctx["devedor_id_atual"] = primeiro_id
+    else:
+        ctx["devedor_vazio"] = True
+        ctx["devedor_id_atual"] = None
+    return ctx
+
+
 # ─── Meus Empréstimos (Lucas é o devedor) ─────────────────────────────────────
 CORES_CREDOR = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
 
@@ -660,6 +818,8 @@ def content_for(section: str, sub: str | None) -> tuple[str, dict]:
         return "content_evolucao.html", evolucao_ctx()
     if section == "escritorio":
         return "content_escritorio.html", escritorio_ctx()
+    if section == "emprestimos" and sub == "concedidos":
+        return "content_emp_concedidos.html", emp_concedidos_ctx()
     if section == "emprestimos" and sub == "meus":
         return "content_meus_emprestimos.html", meus_emprestimos_ctx()
     item = next((n for n in NAV if n["id"] == section), NAV[0])
@@ -747,6 +907,265 @@ def escritorio_excluir(request: Request):
     ctx = escritorio_ctx()
     return templates.TemplateResponse(request, "_escritorio_inner.html",
                                        {**ctx, "user_email": current_user(request)})
+
+
+def _emp_concedidos_response(request: Request) -> HTMLResponse:
+    """Retorna o miolo inteiro (#emp-concedidos-conteudo) — usado quando a lista
+    de devedores muda (cadastro de novo devedor), já que o <select> precisa ser
+    re-renderizado com a nova opção."""
+    ctx = emp_concedidos_ctx()
+    return templates.TemplateResponse(request, "_emp_concedidos_inner.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+def _devedor_detalhe_response(request: Request, devedor_id) -> HTMLResponse:
+    """Retorna o painel do devedor + KPIs globais via OOB swap — usado por ações
+    que alteram saldo/contratos de um devedor sem mudar a lista de devedores."""
+    ctx = devedor_detalhe_ctx(devedor_id)
+    ctx.update(_kpis_globais_emp_ctx())
+    return templates.TemplateResponse(request, "_devedor_detalhe_response.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+@app.get("/emprestimos-concedidos/devedor", response_class=HTMLResponse)
+def emp_concedidos_devedor(request: Request, devedor_id: str = ""):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    if devedor_id == "novo":
+        return templates.TemplateResponse(request, "_devedor_detalhe_novo.html", {})
+    ctx = devedor_detalhe_ctx(devedor_id)
+    return templates.TemplateResponse(request, "_devedor_detalhe.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+@app.post("/emprestimos-concedidos/devedor/novo", response_class=HTMLResponse)
+def emp_concedidos_devedor_novo(request: Request, nome: str = Form(...),
+                                 categoria: str = Form(""), contato: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    novo_id = None
+    if nome.strip():
+        try:
+            res = sb.table("devedores").insert({
+                "nome": nome.strip(), "categoria": categoria, "contato": contato, "ativo": True,
+            }).execute()
+            novo_id = res.data[0]["id"]
+        except Exception:
+            pass
+    ctx = emp_concedidos_ctx()
+    if novo_id is not None:
+        ctx.update(devedor_detalhe_ctx(novo_id))
+        ctx["devedor_id_atual"] = novo_id
+    return templates.TemplateResponse(request, "_emp_concedidos_inner.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+@app.post("/emprestimos-concedidos/contrato/novo", response_class=HTMLResponse)
+def emp_concedidos_contrato_novo(request: Request, devedor_id: str = Form(...),
+                                  titulo: str = Form(...), data: str = Form(...),
+                                  valor: str = Form(...), taxa: str = Form(...),
+                                  dia_vencimento: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    valor_v = parse_brl(valor)
+    try:
+        taxa_pct = float(taxa)
+    except Exception:
+        taxa_pct = 0.0
+    if titulo and valor_v > 0:
+        taxa_v = taxa_pct / 100
+        parcela = round(valor_v * taxa_v, 2)
+        try:
+            dv = int(dia_vencimento) if dia_vencimento else None
+        except Exception:
+            dv = None
+        try:
+            sb.table("emprestimos_concedidos").insert({
+                "devedor_id": int(devedor_id), "titulo": titulo, "data_emprestimo": data,
+                "valor_original": round(valor_v, 2), "saldo_devedor": round(valor_v, 2),
+                "taxa_juros": round(taxa_v, 6), "parcela_juros": parcela,
+                "dia_vencimento": dv, "status": "ativo",
+            }).execute()
+        except Exception:
+            pass
+    return _devedor_detalhe_response(request, devedor_id)
+
+
+@app.post("/emprestimos-concedidos/contrato/excluir", response_class=HTMLResponse)
+def emp_concedidos_contrato_excluir(request: Request, emprestimo_id: str = Form(...),
+                                     devedor_id: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        sb.table("emprestimos_concedidos").delete().eq("id", emprestimo_id).execute()
+    except Exception:
+        pass
+    return _devedor_detalhe_response(request, devedor_id)
+
+
+@app.post("/emprestimos-concedidos/pagamento", response_class=HTMLResponse)
+def emp_concedidos_pagamento(request: Request, emprestimo_id: str = Form(...),
+                              devedor_id: str = Form(...), tipo: str = Form("amortizacao"),
+                              valor: str = Form(...), data: str = Form(...),
+                              obs: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    r = sb.table("emprestimos_concedidos").select("*").eq("id", emprestimo_id).execute()
+    if r.data:
+        row = r.data[0]
+        eh_somente_juros = (tipo == "juros")
+        saldo_at = float(row["saldo_devedor"] or 0)
+        juros_mes_v = float(row["parcela_juros"] or 0)
+        valor_pago_v = parse_brl(valor)
+        if eh_somente_juros:
+            # Pagamento somente de juros: não abate o saldo devedor.
+            amort_v = 0.0
+            novo_saldo_v = saldo_at
+            juros_reg = round(valor_pago_v, 2)
+        else:
+            # Amortização pura: o valor pago debita integralmente do saldo.
+            # Juros do período ficam registrados como referência, sem abater do valor.
+            amort_v = valor_pago_v
+            novo_saldo_v = max(0.0, saldo_at - amort_v)
+            juros_reg = round(juros_mes_v, 2)
+        try:
+            sb.table("pagamentos_recebidos").insert({
+                "emprestimo_id": int(emprestimo_id), "data_pagamento": data,
+                "valor_pago": round(valor_pago_v, 2), "juros": juros_reg,
+                "amortizacao": round(amort_v, 2), "saldo_antes": round(saldo_at, 2),
+                "saldo_depois": round(novo_saldo_v, 2), "observacao": obs,
+                "tipo": "juros" if eh_somente_juros else "amortizacao",
+            }).execute()
+            if not eh_somente_juros:
+                upd = {"saldo_devedor": round(novo_saldo_v, 2),
+                       "parcela_juros": round(novo_saldo_v * float(row["taxa_juros"] or 0), 2)}
+                if novo_saldo_v == 0:
+                    upd["status"] = "quitado"
+                sb.table("emprestimos_concedidos").update(upd).eq("id", emprestimo_id).execute()
+        except Exception:
+            pass
+    return _devedor_detalhe_response(request, devedor_id)
+
+
+@app.get("/emprestimos-concedidos/pagamento-editar/{pag_id}", response_class=HTMLResponse)
+def emp_concedidos_pagamento_editar(request: Request, pag_id: int):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    r = sb.table("pagamentos_recebidos").select("*").eq("id", pag_id).execute()
+    if not r.data:
+        return HTMLResponse("")
+    p = r.data[0]
+    r_e = sb.table("emprestimos_concedidos").select("devedor_id").eq("id", p["emprestimo_id"]).execute()
+    devedor_id = r_e.data[0]["devedor_id"] if r_e.data else ""
+    return templates.TemplateResponse(request, "_linha_emp_editar.html", {
+        "devedor_id": devedor_id, "p_id": pag_id,
+        "data_iso": p.get("data_pagamento") or "",
+        "valor_pago": brl_input(p.get("valor_pago")),
+        "juros": brl_input(p.get("juros")),
+        "obs": p.get("observacao") or "",
+    })
+
+
+@app.get("/emprestimos-concedidos/pagamento-normal/{pag_id}", response_class=HTMLResponse)
+def emp_concedidos_pagamento_normal(request: Request, pag_id: int):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    r = sb.table("pagamentos_recebidos").select("*").eq("id", pag_id).execute()
+    if not r.data:
+        return HTMLResponse("")
+    p = r.data[0]
+    eid = p["emprestimo_id"]
+    r_e = sb.table("emprestimos_concedidos").select(
+        "devedor_id,status,saldo_devedor").eq("id", eid).execute()
+    row_e = r_e.data[0] if r_e.data else {}
+    devedor_id = row_e.get("devedor_id", "")
+    is_quitado = (row_e.get("status") == "quitado") or (float(row_e.get("saldo_devedor") or 0) <= 0)
+    pags_e = sb.table("pagamentos_recebidos").select("id,data_pagamento").eq(
+        "emprestimo_id", eid).execute().data or []
+    pags_e_desc = sorted(pags_e, key=lambda x: (x.get("data_pagamento") or "", x.get("id") or 0),
+                          reverse=True)
+    ultimo_pag_id = None if is_quitado else (pags_e_desc[0]["id"] if pags_e_desc else None)
+    obs = str(p.get("observacao") or "")
+    if p.get("tipo", "amortizacao") == "juros":
+        obs = "🔵 Somente Juros" + (f" · {obs}" if obs else "")
+    saldo_dep = p.get("saldo_depois")
+    pagamento = {
+        "id": pag_id, "is_ultimo": (pag_id == ultimo_pag_id),
+        "data": _fmt_data_emp(p.get("data_pagamento")),
+        "valor_pago": brl(p.get("valor_pago")), "juros": brl(p.get("juros")),
+        "amortizacao": brl(p.get("amortizacao")),
+        "saldo_depois": brl(saldo_dep) if saldo_dep is not None else "—",
+        "obs": obs,
+    }
+    return templates.TemplateResponse(request, "_linha_emp_normal.html",
+                                       {"devedor_id": devedor_id, "pagamento": pagamento})
+
+
+def _recalcula_saldo_contrato(eid) -> None:
+    """Recalcula saldo_devedor/parcela_juros/status de um contrato a partir da
+    soma de todas as amortizações registradas nele (mesma lógica do Streamlit)."""
+    r_e = sb.table("emprestimos_concedidos").select("valor_original,taxa_juros").eq("id", eid).execute()
+    if not r_e.data:
+        return
+    row_e = r_e.data[0]
+    val_orig = float(row_e["valor_original"] or 0)
+    taxa_c = float(row_e["taxa_juros"] or 0)
+    res_amort = sb.table("pagamentos_recebidos").select("amortizacao").eq("emprestimo_id", eid).execute()
+    total_amort = sum(float(x["amortizacao"] or 0) for x in (res_amort.data or []))
+    novo_saldo = round(max(0.0, val_orig - total_amort), 2)
+    novo_juros = round(novo_saldo * taxa_c, 2)
+    sb.table("emprestimos_concedidos").update({
+        "saldo_devedor": novo_saldo, "parcela_juros": novo_juros,
+        "status": "quitado" if novo_saldo <= 0 else "ativo",
+    }).eq("id", eid).execute()
+
+
+@app.post("/emprestimos-concedidos/pagamento-salvar/{pag_id}", response_class=HTMLResponse)
+def emp_concedidos_pagamento_salvar(request: Request, pag_id: int, devedor_id: str = Form(...),
+                                     data: str = Form(...), valor: str = Form(...),
+                                     juros: str = Form(...), obs: str = Form("")):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        r = sb.table("pagamentos_recebidos").select("*").eq("id", pag_id).execute()
+        if r.data:
+            p = r.data[0]
+            eid = p["emprestimo_id"]
+            eh_juros_edit = (p.get("tipo", "amortizacao") == "juros")
+            novo_val_pago = round(parse_brl(valor), 2)
+            juros_digitado = round(parse_brl(juros), 2)
+            # Pagamento "somente juros" nunca abate o saldo (amort = 0), mesmo
+            # após edição — preserva o tipo original do lançamento.
+            nova_amort = 0.0 if eh_juros_edit else novo_val_pago
+            sb.table("pagamentos_recebidos").update({
+                "data_pagamento": data, "valor_pago": novo_val_pago,
+                "juros": juros_digitado, "amortizacao": round(nova_amort, 2),
+                "observacao": obs,
+            }).eq("id", pag_id).execute()
+            _recalcula_saldo_contrato(eid)
+            r_e = sb.table("emprestimos_concedidos").select("saldo_devedor").eq("id", eid).execute()
+            novo_saldo = r_e.data[0]["saldo_devedor"] if r_e.data else None
+            if novo_saldo is not None:
+                sb.table("pagamentos_recebidos").update(
+                    {"saldo_depois": novo_saldo}).eq("id", pag_id).execute()
+    except Exception:
+        pass
+    return _devedor_detalhe_response(request, devedor_id)
+
+
+@app.post("/emprestimos-concedidos/pagamento-excluir/{pag_id}", response_class=HTMLResponse)
+def emp_concedidos_pagamento_excluir(request: Request, pag_id: int, devedor_id: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    try:
+        r = sb.table("pagamentos_recebidos").select("emprestimo_id").eq("id", pag_id).execute()
+        if r.data:
+            eid = r.data[0]["emprestimo_id"]
+            sb.table("pagamentos_recebidos").delete().eq("id", pag_id).execute()
+            _recalcula_saldo_contrato(eid)
+    except Exception:
+        pass
+    return _devedor_detalhe_response(request, devedor_id)
 
 
 def _meus_emprestimos_response(request: Request) -> HTMLResponse:

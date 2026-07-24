@@ -1,0 +1,43 @@
+<div id="emp-concedidos-conteudo">
+  <div id="kpis-globais-emp" class="kpi-row">
+    <div class="kpi">
+      <div class="label">Total a Receber</div>
+      <div class="value">{{ kpi_g_saldo }}</div>
+    </div>
+    <div class="kpi gold">
+      <div class="label">Juros Mensais</div>
+      <div class="value">{{ kpi_g_juros }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Contratos Ativos</div>
+      <div class="value">{{ kpi_g_contratos }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Total Recebido</div>
+      <div class="value">{{ kpi_g_recebido }}</div>
+    </div>
+  </div>
+
+  {% if devedores_vazio %}
+    <div class="card">
+      <p style="color:var(--muted)">Nenhum devedor cadastrado ainda.</p>
+      {% include "_devedor_novo_form.html" %}
+    </div>
+  {% else %}
+    <div class="card" style="margin-bottom:16px">
+      <div class="campo">
+        <label for="sel-devedor">Devedor</label>
+        <select id="sel-devedor" name="devedor_id"
+                hx-get="/emprestimos-concedidos/devedor" hx-target="#devedor-detalhe"
+                hx-swap="outerHTML" hx-trigger="change">
+          {% for d in devedores %}
+            <option value="{{ d.id }}" {{ "selected" if d.id == devedor_id_atual }}>{{ d.nome }}</option>
+          {% endfor %}
+          <option value="novo">➕ Cadastrar Novo Devedor</option>
+        </select>
+      </div>
+    </div>
+
+    {% include "_devedor_detalhe.html" %}
+  {% endif %}
+</div>

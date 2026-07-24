@@ -1,0 +1,17 @@
+<form hx-post="/emprestimos-concedidos/devedor/novo" hx-target="#emp-concedidos-conteudo" hx-swap="outerHTML">
+  <div class="form-grid">
+    <div class="campo">
+      <label for="nd-nome">Nome</label>
+      <input type="text" id="nd-nome" name="nome" required>
+    </div>
+    <div class="campo">
+      <label for="nd-categoria">Categoria (ex: Loja, Pessoa)</label>
+      <input type="text" id="nd-categoria" name="categoria">
+    </div>
+  </div>
+  <div class="campo" style="margin:12px 0">
+    <label for="nd-contato">Contato (opcional)</label>
+    <input type="text" id="nd-contato" name="contato">
+  </div>
+  <button type="submit" class="btn-primario">💾 Cadastrar Devedor</button>
+</form>

@@ -196,6 +196,28 @@ details.painel > summary::before { content:"▸"; color:var(--muted-soft); trans
 details.painel[open] > summary::before { content:"▾"; }
 details.painel .painel-corpo { margin-top:12px; }
 
+/* ── Cards de contrato (Empréstimos Concedidos) ── */
+.contratos-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+.contrato-card {
+  background:var(--bg-card); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; display:flex; flex-direction:column; gap:10px;
+}
+.contrato-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.contrato-card-head .titulo { font-size:.85rem; font-weight:600; color:var(--ink); line-height:1.3; }
+.venc-badge {
+  font-size:.68rem; color:var(--muted); background:var(--bg); padding:3px 9px;
+  border-radius:20px; white-space:nowrap; flex-shrink:0;
+}
+.contrato-valores { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.contrato-valores .v { display:flex; flex-direction:column; gap:2px; }
+.contrato-valores .v .num { font-size:.95rem; font-weight:700; color:var(--ink); }
+.contrato-valores .v.juros .num { color:var(--gold); }
+.contrato-valores .v .lbl { font-size:.62rem; color:var(--muted-soft); letter-spacing:.02em; text-transform:uppercase; }
+.progresso-wrap { display:flex; flex-direction:column; gap:4px; }
+.progresso-track { height:5px; border-radius:99px; background:var(--line); overflow:hidden; }
+.progresso-fill { height:100%; border-radius:99px; background:var(--verde); transition:width .4s ease; }
+.progresso-legenda { display:flex; justify-content:space-between; font-size:.68rem; color:var(--muted-soft); }
+
 /* ── Histórico de pagamentos por contrato (Empréstimos) ── */
 .contrato-hist { border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
 .contrato-hist.quitado { background:rgba(27,122,52,.05); }

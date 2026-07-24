@@ -1,0 +1,40 @@
+{% macro linha_pagamento_concedido(devedor_id, p) %}
+<tr id="pag-row-{{ p.id }}">
+  <td>{{ p.data }}</td>
+  <td>{{ p.valor_pago }}</td>
+  <td>{{ p.juros }}</td>
+  <td>{{ p.amortizacao }}</td>
+  <td>{{ p.saldo_depois }}</td>
+  <td>{{ p.obs }}</td>
+  <td class="acoes-col">
+    {% if p.is_ultimo %}
+      <button type="button" class="btn-editar" hx-get="/emprestimos-concedidos/pagamento-editar/{{ p.id }}"
+              hx-target="#pag-row-{{ p.id }}" hx-swap="outerHTML">EDITAR</button>
+      <button type="button" class="btn-excluir"
+              hx-post="/emprestimos-concedidos/pagamento-excluir/{{ p.id }}"
+              hx-vals='{"devedor_id": "{{ devedor_id }}"}'
+              hx-target="#devedor-detalhe" hx-swap="outerHTML"
+              hx-confirm="Excluir o pagamento de {{ p.valor_pago }} em {{ p.data }}? Essa ação não pode ser desfeita.">EXCLUIR</button>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro linha_pagamento_concedido_editar(devedor_id, p_id, data_iso, valor_pago, juros, obs) %}
+<tr id="pag-row-{{ p_id }}" class="linha-edicao">
+  <td colspan="7">
+    <form hx-post="/emprestimos-concedidos/pagamento-salvar/{{ p_id }}" hx-target="#devedor-detalhe"
+          hx-swap="outerHTML" class="form-inline-edicao">
+      <input type="hidden" name="devedor_id" value="{{ devedor_id }}">
+      <input type="date" name="data" value="{{ data_iso }}" required>
+      <input type="text" name="valor" value="{{ valor_pago }}" placeholder="Valor pago">
+      <input type="text" name="juros" value="{{ juros }}" placeholder="Juros ref.">
+      <input type="text" name="obs" value="{{ obs }}" placeholder="Observação">
+      <button type="submit" class="btn-primario btn-sm">💾 Salvar</button>
+      <button type="button" class="btn-secundario btn-sm"
+              hx-get="/emprestimos-concedidos/pagamento-normal/{{ p_id }}"
+              hx-target="#pag-row-{{ p_id }}" hx-swap="outerHTML">❌ Cancelar</button>
+    </form>
+  </td>
+</tr>
+{% endmacro %}

@@ -1,0 +1,19 @@
+{% include "_devedor_detalhe.html" %}
+<div id="kpis-globais-emp" class="kpi-row" hx-swap-oob="true">
+  <div class="kpi">
+    <div class="label">Total a Receber</div>
+    <div class="value">{{ kpi_g_saldo }}</div>
+  </div>
+  <div class="kpi gold">
+    <div class="label">Juros Mensais</div>
+    <div class="value">{{ kpi_g_juros }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Contratos Ativos</div>
+    <div class="value">{{ kpi_g_contratos }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Total Recebido</div>
+    <div class="value">{{ kpi_g_recebido }}</div>
+  </div>
+</div>
