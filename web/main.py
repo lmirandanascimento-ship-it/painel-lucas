@@ -184,7 +184,6 @@ def atualizar_cotacoes_ctx() -> dict:
     fail: list[str] = []
 
     usd_val = quotes.fetch_usd_brl()
-    ok.append(f"USD/BRL → {usd_val:.4f}")
 
     tickers_br = [p["ticker"] for p in posicoes_rv if p.get("moeda") == "BRL"]
     tickers_us = [p["ticker"] for p in posicoes_rv if p.get("moeda") == "USD"]
@@ -206,7 +205,7 @@ def atualizar_cotacoes_ctx() -> dict:
     cor = "🟢" if n_fail == 0 else ("🟡" if n_ok > 0 else "🔴")
     return {
         "ok": ok, "fail": fail, "n_ok": n_ok, "n_fail": n_fail, "cor": cor,
-        "hora": agora_br().strftime("%H:%M:%S"),
+        "hora": agora_br().strftime("%H:%M:%S"), "usd_brl": usd_val,
     }
 
 
