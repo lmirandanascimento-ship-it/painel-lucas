@@ -82,32 +82,26 @@ st.markdown(f"""
 .side-brand .tag {{
     font-size:.6rem; letter-spacing:.13em; text-transform:uppercase; color:#9A9484; margin-top:4px;
 }}
-.side-sub-label {{
-    font-size:.66rem; letter-spacing:.08em; text-transform:uppercase;
-    color:#9A9484; margin:2px 4px 2px 26px;
-}}
-[data-testid="stSidebar"] div[data-testid="stRadio"] > label {{ display:none; }}
-[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {{
-    display:flex; flex-direction:column; gap:2px;
-}}
-[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label {{
-    display:flex; align-items:center; padding:9px 12px;
-    border-radius:12px; cursor:pointer; color:#756F62;
-    font-size:.85rem; font-weight:500; transition:background .15s, color .15s;
-}}
-[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {{
-    background:#F5F0E6; color:#1E2320;
-}}
-[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {{
-    background:{VERDE}; color:#C9A227; font-weight:700;
-}}
-[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] {{
-    display:none;
-}}
+/* Navegação = botões (não radio): sem marcador nativo, controle total de layout */
+[data-testid="stSidebar"] .stButton {{ margin-bottom:2px; }}
 [data-testid="stSidebar"] .stButton button {{
-    border-radius:999px; border:1px solid #E7E0CE; background:#FFFFFF; color:#756F62;
+    width:100%; text-align:left; justify-content:flex-start;
+    border-radius:12px; padding:9px 12px; font-size:.85rem; font-weight:500;
+    transition:background .15s, color .15s;
 }}
-[data-testid="stSidebar"] .stButton button:hover {{ color:#B71C1C; border-color:#B71C1C; }}
+[data-testid="stSidebar"] .stButton button[kind="secondary"] {{
+    background:transparent; border:none; color:#756F62; box-shadow:none;
+}}
+[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {{
+    background:#F5F0E6; color:#1E2320; border:none;
+}}
+[data-testid="stSidebar"] .stButton button[kind="primary"] {{
+    background:{VERDE}; border:none; color:#C9A227; font-weight:700; box-shadow:none;
+}}
+[data-testid="stSidebar"] .stButton button[kind="primary"]:hover {{
+    background:{VERDE}; color:#C9A227; opacity:.9;
+}}
+[data-testid="stSidebar"] button:focus:not(:focus-visible) {{ box-shadow:none; }}
 
 /* ── Botões EDITAR/EXCLUIR usam <a> HTML com inline styles — sem CSS necessário ── */
 </style>
@@ -897,8 +891,7 @@ def tab_internacional(snap_rv, posicoes_rv):
                      "Posição (US$)":usd(tot_at_usd),
                      "Ganho (US$)":usd(tot_at_usd-tot_inv_usd,sign=True),
                      "%":pct(ren_t), "Posição (R$) est.": brl(tot_at_usd * usd_brl)})
-        st.dataframe(pd.DataFrame(rows), use_container_width=True,
-                     hide_index=True, height=300)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     st.caption(
         f"PM, Cotação, Investido, Posição, Ganho e % são 100% em dólar — a rentabilidade "
         f"não sofre efeito de câmbio. A coluna \"Posição (R$) est.\" é apenas uma "
@@ -2587,7 +2580,17 @@ else:
     if "emp_sub_nav" not in st.session_state:
         st.session_state["emp_sub_nav"] = EMP_SUBS[0]
 
-    # ── Menu lateral ───────────────────────────────────────────────────────────
+    # ── Menu lateral (botões — dá controle total de onde o submenu aparece) ────
+    def _nav_btn(label, active, key, indent=False):
+        if indent:
+            _, col = st.columns([0.16, 0.84])
+        else:
+            col = st.container()
+        with col:
+            clicked = st.button(label, key=key, use_container_width=True,
+                                 type="primary" if active else "secondary")
+        return clicked
+
     with st.sidebar:
         st.markdown(f"""
         <div class="side-brand">
@@ -2595,23 +2598,33 @@ else:
             <div class="tag">Planejar · Poupar · Prosperar</div>
         </div>""", unsafe_allow_html=True)
 
-        nav = st.radio("Seção", _NAV, key="nav_section", label_visibility="collapsed")
+        for item in _NAV:
+            is_active = (st.session_state["nav_section"] == item)
+            if _nav_btn(item, is_active, key=f"nav_{item}"):
+                st.session_state["nav_section"] = item
+                st.rerun()
 
-        if nav == "🌍 Internacional":
-            st.markdown('<div class="side-sub-label">Ativos</div>', unsafe_allow_html=True)
-            st.radio("Sub-seção Internacional", INTL_SUBS,
-                     key="intl_sub_nav", label_visibility="collapsed")
+            if item == "🌍 Internacional" and is_active:
+                for sub in INTL_SUBS:
+                    sub_active = (st.session_state["intl_sub_nav"] == sub)
+                    if _nav_btn(sub, sub_active, key=f"sub_{sub}", indent=True):
+                        st.session_state["intl_sub_nav"] = sub
+                        st.rerun()
 
-        if nav == "💳 Empréstimos":
-            st.markdown('<div class="side-sub-label">Tipo</div>', unsafe_allow_html=True)
-            st.radio("Sub-seção Empréstimos", EMP_SUBS,
-                     key="emp_sub_nav", label_visibility="collapsed")
+            if item == "💳 Empréstimos" and is_active:
+                for sub in EMP_SUBS:
+                    sub_active = (st.session_state["emp_sub_nav"] == sub)
+                    if _nav_btn(sub, sub_active, key=f"sub_{sub}", indent=True):
+                        st.session_state["emp_sub_nav"] = sub
+                        st.rerun()
 
-        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+        st.divider()
         if st.button("🚪 Sair", use_container_width=True):
             sb.auth.sign_out()
             st.session_state.clear()
             st.rerun()
+
+    nav = st.session_state["nav_section"]
 
     # ── Conteúdo da seção ativa ───────────────────────────────────────────────
     if   nav == "📊 Resumo":         tab_resumo(snap_rv, snap_rf, posicoes_rv)
