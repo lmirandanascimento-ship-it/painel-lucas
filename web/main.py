@@ -28,14 +28,20 @@ def _secret(key: str) -> str | None:
     return os.environ.get(key)
 
 SUPABASE_URL = _secret("SUPABASE_URL")
-SUPABASE_KEY = _secret("SUPABASE_KEY")
+SUPABASE_KEY = _secret("SUPABASE_KEY")                  # anon — só pra validar login
+SUPABASE_SERVICE_KEY = _secret("SUPABASE_SERVICE_KEY")  # service_role — todas as consultas
 SESSION_SECRET = _secret("SESSION_SECRET") or secrets.token_hex(32)
 
 VERDE = "#1A4731"
 OURO  = "#B8860B"
 CAPITAL_BASE = 684_160.69
 
-sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+# sb_auth: só usado pra validar e-mail/senha no login (chave anon).
+# sb: usado em TODA consulta de dado (chave service_role) — não depende de sessão
+# de usuário, então não quebra quando o processo do servidor reinicia (redeploy,
+# crash, escala) enquanto o cookie de login do navegador continua válido.
+sb_auth = create_client(SUPABASE_URL, SUPABASE_KEY)
+sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY or SUPABASE_KEY)
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
@@ -440,7 +446,7 @@ def login_page(request: Request, erro: str | None = None):
 @app.post("/login")
 def login_submit(request: Request, email: str = Form(...), senha: str = Form(...)):
     try:
-        r = sb.auth.sign_in_with_password({"email": email, "password": senha})
+        r = sb_auth.auth.sign_in_with_password({"email": email, "password": senha})
         request.session["user_email"] = r.user.email
         return RedirectResponse("/", status_code=303)
     except Exception:
