@@ -107,6 +107,14 @@ def pct(v: float) -> str:
     return f"{'+' if v >= 0 else ''}{v:.2f}%".replace(".", ",")
 
 
+def parse_brl(s: str) -> float:
+    try:
+        return float(str(s).strip().replace("R$", "").replace(" ", "")
+                     .replace(".", "").replace(",", "."))
+    except Exception:
+        return 0.0
+
+
 # ─── Dados (Supabase) ─────────────────────────────────────────────────────────
 def load_snapshot(tipo: str) -> dict:
     r = (sb.table("carteira_snapshots")
@@ -424,6 +432,89 @@ def evolucao_ctx() -> dict:
     }
 
 
+# ─── Escritório ───────────────────────────────────────────────────────────────
+TAXA_ESCRITORIO = 0.01  # rendimento = sempre 1% do saldo do mês anterior
+TIPOS_ESCRITORIO = ["Honorários", "Êxito", "Consultoria",
+                     "Aporte de Sócio", "Retirada / Pró-labore", "Outro"]
+
+
+def load_investimentos() -> list[dict]:
+    r = sb.table("investimentos_escritorio").select("*").order("mes").execute()
+    return r.data or []
+
+
+def _ultimo_saldo_escritorio(inv_plot: list[dict]) -> float:
+    return float(inv_plot[-1]["saldo_final"]) if inv_plot else 0.0
+
+
+def escritorio_ctx() -> dict:
+    inv = load_investimentos()
+    inv_plot = [i for i in inv if float(i.get("saldo_final") or 0) > 0]
+    ctx = {
+        "vazio": not inv_plot, "tipos": TIPOS_ESCRITORIO,
+        "ultimo_saldo": _ultimo_saldo_escritorio(inv_plot), "taxa": TAXA_ESCRITORIO,
+    }
+    if not inv_plot:
+        return ctx
+
+    ultimo = inv_plot[-1]
+    primeiro = inv_plot[0]
+    saldo_v = float(ultimo["saldo_final"])
+    rend_v = float(ultimo["rendimento"])
+    saldo_ini = float(primeiro["saldo_final"])
+    rentab_total = (saldo_v / saldo_ini - 1) * 100 if saldo_ini else 0
+    total_rend = sum(float(i.get("rendimento") or 0) for i in inv)
+
+    # Gráfico combinado (rendimento em barra + saldo em linha), mesma escala,
+    # igual ao original em Plotly.
+    valores_saldo = [float(i["saldo_final"]) for i in inv_plot]
+    valores_rend = [float(i["rendimento"] or 0) for i in inv_plot]
+    todos_valores = valores_saldo + valores_rend + [0]
+    vmin, vmax = min(todos_valores), max(todos_valores)
+    pad = (vmax - vmin) * 0.06 or 1000
+    vmax += pad
+    largura, altura = 760, 260
+    n = len(inv_plot)
+    barw = min(28, largura / max(n, 1) * 0.5)
+
+    def x_of(i):
+        return 40 if n == 1 else round(40 + i / (n - 1) * (largura - 80), 1)
+
+    def y_of(v):
+        return round(altura - (v - vmin) / (vmax - vmin) * altura, 1)
+
+    barras = []
+    for i, v in enumerate(valores_rend):
+        x = x_of(i)
+        y_topo = y_of(v)
+        barras.append({"x": round(x - barw / 2, 1), "y": y_topo, "w": round(barw, 1),
+                        "h": round(altura - y_topo, 1)})
+    pontos_saldo = " ".join(f"{x_of(i)},{y_of(v)}" for i, v in enumerate(valores_saldo))
+
+    linhas = []
+    for i in reversed(inv_plot):
+        linhas.append({
+            "mes": datetime.fromisoformat(i["mes"]).strftime("%b/%Y"),
+            "tipo": i["tipo"],
+            "aporte": brl(float(i["valor"] or 0), sign=True),
+            "rendimento": brl(float(i["rendimento"] or 0)),
+            "saldo_final": brl(float(i["saldo_final"] or 0)),
+        })
+
+    ctx.update({
+        "kpi_saldo": brl(saldo_v), "kpi_rend_ultimo": brl(rend_v),
+        "kpi_rend_acum": brl(total_rend), "kpi_rentab": pct(rentab_total),
+        "rentab_positiva": rentab_total >= 0,
+        "desde": primeiro["mes"] and datetime.fromisoformat(primeiro["mes"]).strftime("%b/%Y"),
+        "svg_w": largura, "svg_h": altura, "barras": barras, "pontos_saldo": pontos_saldo,
+        "linhas": linhas,
+        "ultimo_mes_fmt": datetime.fromisoformat(ultimo["mes"]).strftime("%b/%Y"),
+        "ultimo_tipo": ultimo["tipo"], "ultimo_saldo_fmt": brl(saldo_v),
+        "ultimo_mes_iso": ultimo["mes"],
+    })
+    return ctx
+
+
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 def current_user(request: Request):
     return request.session.get("user_email")
@@ -470,6 +561,8 @@ def content_for(section: str, sub: str | None) -> tuple[str, dict]:
         return "content_rf.html", rf_ctx(section)
     if section == "evolucao":
         return "content_evolucao.html", evolucao_ctx()
+    if section == "escritorio":
+        return "content_escritorio.html", escritorio_ctx()
     item = next((n for n in NAV if n["id"] == section), NAV[0])
     label = item["label"]
     if item.get("subs") and sub:
@@ -513,3 +606,45 @@ def atualizar_cotacoes(request: Request):
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "atualizacao_resultado.html",
                                        atualizar_cotacoes_ctx())
+
+
+@app.post("/escritorio/lancar", response_class=HTMLResponse)
+def escritorio_lancar(request: Request, mes: str = Form(...), tipo: str = Form(...),
+                       valor: str = Form(...)):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    inv = load_investimentos()
+    inv_plot = [i for i in inv if float(i.get("saldo_final") or 0) > 0]
+    ultimo_saldo = _ultimo_saldo_escritorio(inv_plot)
+    valor_v = parse_brl(valor)
+    eh_retirada = (tipo == "Retirada / Pró-labore")
+    valor_efet = -valor_v if eh_retirada else valor_v
+    rend_v = round(ultimo_saldo * TAXA_ESCRITORIO, 2)
+    saldo_calc = round(ultimo_saldo + valor_efet + rend_v, 2)
+    try:
+        sb.table("investimentos_escritorio").upsert({
+            "mes": f"{mes}-01", "tipo": tipo, "valor": round(valor_efet, 2),
+            "rendimento": rend_v, "saldo_final": saldo_calc,
+            "taxa_mensal": TAXA_ESCRITORIO,
+        }, on_conflict="mes").execute()
+    except Exception:
+        pass
+    ctx = escritorio_ctx()
+    return templates.TemplateResponse(request, "content_escritorio.html",
+                                       {**ctx, "user_email": current_user(request)})
+
+
+@app.post("/escritorio/excluir", response_class=HTMLResponse)
+def escritorio_excluir(request: Request):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    inv = load_investimentos()
+    inv_plot = [i for i in inv if float(i.get("saldo_final") or 0) > 0]
+    if inv_plot:
+        try:
+            sb.table("investimentos_escritorio").delete().eq("mes", inv_plot[-1]["mes"]).execute()
+        except Exception:
+            pass
+    ctx = escritorio_ctx()
+    return templates.TemplateResponse(request, "content_escritorio.html",
+                                       {**ctx, "user_email": current_user(request)})

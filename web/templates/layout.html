@@ -152,6 +152,41 @@ tbody tr.pos-baixa td { background:#FBF3D8; }
 .evo-svg-wrap svg { width:100%; height:auto; display:block; }
 .evo-linha-base { stroke:var(--gold); stroke-width:1.5; stroke-dasharray:5 4; fill:none; }
 .evo-linha-patrimonio { stroke:var(--verde); stroke-width:2.5; fill:none; }
+.evo-linha-saldo { stroke:var(--verde); stroke-width:2.5; fill:none; }
+.evo-barra { fill:var(--gold); opacity:.8; }
+
+/* ── Formulários ── */
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:4px; }
+.form-grid.form-1col { grid-template-columns:1fr; }
+@media (max-width:640px) { .form-grid { grid-template-columns:1fr; } }
+.campo { display:flex; flex-direction:column; gap:5px; }
+.campo label { font-size:.76rem; color:var(--muted); font-weight:600; }
+.campo input, .campo select {
+  padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+  font-size:.88rem; font-family:inherit; background:var(--bg-card); color:var(--ink);
+}
+.campo input:focus, .campo select:focus { outline:2px solid var(--verde); outline-offset:1px; }
+
+.btn-primario, .btn-perigo, .btn-secundario {
+  border:none; border-radius:999px; font-weight:700; font-size:.85rem;
+  padding:11px 20px; cursor:pointer; font-family:inherit;
+}
+.btn-primario { background:var(--verde); color:#fff; }
+.btn-primario:hover { opacity:.9; }
+.btn-perigo { background:#FBE7E6; color:var(--neg); border:1px solid #F3C6C2; }
+.btn-perigo:hover { background:var(--neg); color:#fff; }
+.btn-secundario { background:var(--bg-card); color:var(--muted); border:1px solid var(--line); }
+.btn-secundario:hover { background:var(--bg); color:var(--ink); }
+
+details.painel { margin-top:16px; }
+details.painel > summary {
+  cursor:pointer; list-style:none; font-weight:700; font-size:.92rem; color:var(--ink);
+  padding:4px 0; display:flex; align-items:center; gap:8px;
+}
+details.painel > summary::-webkit-details-marker { display:none; }
+details.painel > summary::before { content:"▸"; color:var(--muted-soft); transition:transform .15s; }
+details.painel[open] > summary::before { content:"▾"; }
+details.painel .painel-corpo { margin-top:12px; }
 
 @media (max-width:860px) {
   .shell { flex-direction:column; }
