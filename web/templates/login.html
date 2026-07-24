@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3P Finanças | Painel Lucas</title>
+<style>
+:root {
+  --bg:#F5F0E6; --bg-card:#FFFFFF; --ink:#1E2320; --muted:#756F62; --line:#E7E0CE;
+  --verde:#1A4731; --gold:#B8860B;
+  --serif:"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background:var(--bg); font-family:var(--sans); color:var(--ink);
+}
+.login-card {
+  background:var(--bg-card); border-radius:20px; box-shadow:0 8px 30px rgba(30,35,32,.08);
+  padding:40px 36px; width:100%; max-width:380px;
+}
+.mark { font-family:var(--serif); font-weight:700; font-size:1.6rem; color:var(--verde); text-align:center; }
+.mark span { color:var(--gold); }
+.tag { font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); text-align:center; margin-top:4px; margin-bottom:28px; }
+label { font-size:.8rem; color:var(--muted); display:block; margin-bottom:4px; }
+input {
+  width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+  font-size:.9rem; margin-bottom:16px; font-family:inherit;
+}
+button {
+  width:100%; padding:12px; border:none; border-radius:999px; background:var(--verde);
+  color:var(--gold); font-weight:700; font-size:.9rem; cursor:pointer;
+}
+button:hover { opacity:.92; }
+.erro { background:#FBE7E6; color:#B71C1C; padding:10px 12px; border-radius:10px; font-size:.82rem; margin-bottom:16px; }
+</style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="mark">3P <span>FINANÇAS</span></div>
+    <div class="tag">Planejar · Poupar · Prosperar</div>
+    {% if erro %}<div class="erro">E-mail ou senha incorretos.</div>{% endif %}
+    <form method="post" action="/login">
+      <label for="email">E-mail</label>
+      <input type="email" id="email" name="email" placeholder="seu@email.com" required>
+      <label for="senha">Senha</label>
+      <input type="password" id="senha" name="senha" required>
+      <button type="submit">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>

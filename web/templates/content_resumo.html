@@ -1,0 +1,61 @@
+<div class="topbar">
+  <div class="who"><b>{{ user_email or "Lucas Miranda Nascimento" }}</b> · Assessor: Leandro Nascimento</div>
+</div>
+
+<h1 class="hello">Bem-vindo, <span class="accent">Lucas</span></h1>
+
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="label">Patrimônio Total</div>
+    <div class="value">{{ kpi_total }}</div>
+    <div class="sub">Valor de mercado atual</div>
+  </div>
+  <div class="kpi gold">
+    <div class="label">Capital Inicial (ref.)</div>
+    <div class="value">{{ kpi_capital_base }}</div>
+    <div class="sub">Mar/2026</div>
+  </div>
+  <div class="kpi {{ 'pos' if ganho_positivo else '' }}">
+    <div class="label">Lucro Acumulado</div>
+    <div class="value">{{ kpi_ganho }}</div>
+    <div class="sub {{ 'pos' if ganho_positivo else '' }}">{{ kpi_rentab }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Renda Variável</div>
+    <div class="value">{{ kpi_rv }}</div>
+    <div class="sub">Snapshot {{ data_rv }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Renda Fixa</div>
+    <div class="value">{{ kpi_rf }}</div>
+    <div class="sub">Snapshot {{ data_rf }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h3>Composição do Patrimônio</h3>
+    <span class="tag">Por classe</span>
+  </div>
+  {% if fatias %}
+  <div class="donut-wrap">
+    <div class="donut" style="background:conic-gradient(
+      {% for f in fatias %}{{ f.cor }} {{ f.de }}% {{ f.ate }}%{{ ", " if not loop.last }}{% endfor %}
+    )">
+      <div class="donut-total">{{ total_fmt }}<small>total</small></div>
+    </div>
+    <div class="legend">
+      {% for f in fatias %}
+        <div class="legend-row">
+          <span class="dot" style="background:{{ f.cor }}"></span>
+          <span class="name">{{ f.nome }}</span>
+          <span class="pct">{{ "%.1f"|format(f.pct) }}%</span>
+          <span class="valor">R$ {{ "{:,.2f}".format(f.valor).replace(",", "X").replace(".", ",").replace("X", ".") }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+    <p style="color:var(--muted)">Sem dados de composição no snapshot atual.</p>
+  {% endif %}
+</div>

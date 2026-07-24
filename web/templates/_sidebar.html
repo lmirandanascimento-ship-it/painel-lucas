@@ -1,0 +1,26 @@
+<aside id="sidebar" class="sidebar"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="side-brand">
+    <div class="mark">3P <span>FINANÇAS</span></div>
+    <div class="tag">Planejar · Poupar · Prosperar</div>
+  </div>
+  <nav class="side-nav">
+    {% for item in nav %}
+      <button class="nav-link {{ 'active' if item.id == active else '' }}"
+              hx-get="/nav/{{ item.id }}" hx-target="#content" hx-push-url="/nav/{{ item.id }}">
+        <span class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span>
+      </button>
+      {% if item.subs and item.id == active %}
+        <div class="sub-list">
+          {% for s in item.subs %}
+            <button class="nav-sublink {{ 'active' if s.id == active_sub else '' }}"
+                    hx-get="/nav/{{ item.id }}?sub={{ s.id }}" hx-target="#content"
+                    hx-push-url="/nav/{{ item.id }}?sub={{ s.id }}">
+              {{ s.label }}
+            </button>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  <a href="/logout" class="logout-btn">🚪 Sair</a>
+</aside>

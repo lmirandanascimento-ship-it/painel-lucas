@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3P Finanças | Painel Lucas</title>
+<script src="https://unpkg.com/htmx.org@2.0.3"></script>
+<style>
+:root {
+  --bg:#F5F0E6; --bg-card:#FFFFFF; --sidebar-bg:#FBF8F0;
+  --ink:#1E2320; --muted:#756F62; --muted-soft:#9A9484; --line:#E7E0CE;
+  --verde:#1A4731; --gold:#B8860B; --gold-light:#C9A227;
+  --pos:#1B7A34; --neg:#B71C1C;
+  --shadow:0 1px 2px rgba(30,35,32,.04),0 8px 20px rgba(30,35,32,.05);
+  --serif:"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); }
+.shell { display:flex; min-height:100vh; }
+
+.sidebar {
+  width:264px; flex:0 0 auto; background:var(--sidebar-bg); border-right:1px solid var(--line);
+  padding:22px 16px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh;
+}
+.side-brand { padding:0 8px 20px; }
+.side-brand .mark { font-family:var(--serif); font-weight:700; font-size:1.3rem; color:var(--verde); }
+.side-brand .mark span { color:var(--gold); }
+.side-brand .tag { font-size:.6rem; letter-spacing:.13em; text-transform:uppercase; color:var(--muted-soft); margin-top:4px; }
+.side-nav { display:flex; flex-direction:column; gap:2px; flex:1; }
+.nav-link {
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  border:none; background:transparent; color:var(--muted); font-size:.85rem; font-weight:500;
+  padding:9px 12px; border-radius:12px; cursor:pointer; font-family:inherit;
+}
+.nav-link:hover { background:var(--bg); color:var(--ink); }
+.nav-link.active { background:var(--verde); color:var(--gold-light); font-weight:700; }
+.sub-list { display:flex; flex-direction:column; gap:1px; margin:2px 0 6px 26px; }
+.nav-sublink {
+  display:block; text-align:left; border:none; background:transparent; color:var(--muted);
+  font-size:.8rem; padding:7px 10px; border-radius:10px; cursor:pointer; font-family:inherit;
+}
+.nav-sublink:hover { background:var(--bg); color:var(--ink); }
+.nav-sublink.active { background:#F6EFDC; color:var(--verde); font-weight:700; }
+.logout-btn {
+  margin-top:12px; border:1px solid var(--line); background:var(--bg-card); color:var(--muted);
+  font-size:.82rem; font-weight:600; padding:10px 14px; border-radius:999px; cursor:pointer;
+  text-align:center; text-decoration:none; display:block;
+}
+.logout-btn:hover { color:var(--neg); border-color:var(--neg); }
+
+.content { flex:1 1 auto; min-width:0; padding:clamp(16px,3vw,32px); }
+.topbar { margin-bottom:10px; }
+.who { font-size:.8rem; color:var(--muted); }
+.who b { color:var(--ink); font-weight:600; }
+.content-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+.hello { font-family:var(--serif); font-size:clamp(1.6rem,3vw,2.2rem); font-weight:700; margin:0; }
+.hello .accent { color:var(--gold); }
+
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:18px; }
+.kpi { background:var(--bg-card); border-radius:16px; box-shadow:var(--shadow); padding:16px 20px; border-left:4px solid var(--verde); }
+.kpi.gold { border-left-color:var(--gold); }
+.kpi.pos { border-left-color:var(--pos); }
+.kpi .label { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted-soft); }
+.kpi .value { font-family:var(--serif); font-size:1.5rem; font-weight:700; margin-top:2px; }
+.kpi .sub { font-size:.74rem; color:var(--muted); margin-top:2px; }
+.kpi .sub.pos { color:var(--pos); }
+
+.card { background:var(--bg-card); border-radius:16px; box-shadow:var(--shadow); padding:20px 22px; }
+.card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.card-head h3 { font-family:var(--serif); font-size:1.05rem; font-weight:700; margin:0; }
+.card-head .tag {
+  font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted-soft);
+  background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:4px 10px;
+}
+
+.donut-wrap { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+.donut { width:168px; height:168px; border-radius:50%; flex:0 0 auto; position:relative; display:grid; place-items:center; }
+.donut::after { content:""; position:absolute; inset:22%; background:var(--bg-card); border-radius:50%; }
+.donut-total { position:relative; z-index:1; text-align:center; font-family:var(--serif); font-weight:700; font-size:.92rem; }
+.donut-total small { display:block; font-family:var(--sans); font-weight:500; font-size:.6rem; color:var(--muted-soft); text-transform:uppercase; letter-spacing:.08em; }
+.legend { flex:1 1 200px; display:flex; flex-direction:column; gap:8px; min-width:200px; }
+.legend-row { display:flex; align-items:center; gap:9px; font-size:.82rem; }
+.legend-row .dot { width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
+.legend-row .name { flex:1; }
+.legend-row .pct { color:var(--muted); font-variant-numeric:tabular-nums; }
+.legend-row .valor { font-weight:700; min-width:110px; text-align:right; font-variant-numeric:tabular-nums; }
+
+.em-construcao { text-align:center; padding:60px 20px; color:var(--muted); }
+.em-construcao .ico { font-size:2.4rem; margin-bottom:12px; }
+
+@media (max-width:860px) {
+  .shell { flex-direction:column; }
+  .sidebar { width:100%; height:auto; position:relative; }
+}
+</style>
+</head>
+<body>
+  <div class="shell">
+    {% include "_sidebar.html" %}
+    <main id="content" class="content">
+      {{ content_html | safe }}
+    </main>
+  </div>
+</body>
+</html>
