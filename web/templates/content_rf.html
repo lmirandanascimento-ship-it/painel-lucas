@@ -12,7 +12,7 @@
         <thead><tr>{% for c in colunas %}<th>{{ c }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for l in linhas %}
-            <tr>{% for c in colunas %}<td>{{ l[c] }}</td>{% endfor %}</tr>
+            <tr class="{{ l._faixa }}">{% for c in colunas %}<td>{{ l[c] }}</td>{% endfor %}</tr>
           {% endfor %}
         </tbody>
       </table>

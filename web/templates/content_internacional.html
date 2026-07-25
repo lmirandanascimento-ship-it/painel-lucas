@@ -16,7 +16,7 @@
         </thead>
         <tbody>
           {% for l in linhas %}
-            <tr>
+            <tr class="{{ l.faixa }}">
               <td><b>{{ l.ativo }}</b></td><td>{{ l.setor }}</td><td>{{ l.qtd }}</td>
               <td>{{ l.pm }}</td><td>{{ l.cotacao }}</td><td>{{ l.investido }}</td>
               <td>{{ l.posicao }}</td><td>{{ l.ganho }}</td><td>{{ l.pct }}</td>

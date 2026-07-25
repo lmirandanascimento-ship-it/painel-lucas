@@ -170,8 +170,15 @@ thead th {
 tbody td { padding:11px 10px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
 tbody tr:last-child td { border-bottom:none; }
 tbody tr.total td { font-weight:700; background:var(--bg); }
-tbody tr.pos-alta td { background:#EAF5EC; }
-tbody tr.pos-baixa td { background:#FBF3D8; }
+/* ── Destaque de desempenho: <-20% vermelho, -20%~-10% amarelo, +10%~+20% azul, >+20% verde ── */
+tbody tr.ren-alta-forte td { background:#E3F5E9; }
+tbody tr.ren-alta-forte td:first-child { border-left:3px solid var(--pos); }
+tbody tr.ren-alta td { background:#E5EEFC; }
+tbody tr.ren-alta td:first-child { border-left:3px solid #1D4ED8; }
+tbody tr.ren-baixa td { background:#FBEFCF; }
+tbody tr.ren-baixa td:first-child { border-left:3px solid #B8860B; }
+tbody tr.ren-baixa-forte td { background:#FBE2E1; }
+tbody tr.ren-baixa-forte td:first-child { border-left:3px solid var(--neg); }
 
 /* ── Gráfico de evolução (SVG) ── */
 .evo-svg-wrap { width:100%; overflow-x:auto; }

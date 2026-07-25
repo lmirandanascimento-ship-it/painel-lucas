@@ -134,6 +134,24 @@ def fatias_composicao(itens: list[tuple[str, float]], fmt=None) -> list[dict]:
     return fatias
 
 
+def faixa_ren(ren) -> str:
+    """Classe CSS de destaque conforme a rentabilidade (ren em %, ex: 15.0 = 15%):
+    < -20% vermelho, -20% a -10% amarelo, +10% a +20% azul, > +20% verde."""
+    try:
+        ren = float(ren)
+    except (TypeError, ValueError):
+        return ""
+    if ren >= 20:
+        return "ren-alta-forte"
+    if ren >= 10:
+        return "ren-alta"
+    if ren <= -20:
+        return "ren-baixa-forte"
+    if ren <= -10:
+        return "ren-baixa"
+    return ""
+
+
 def parse_brl(s: str) -> float:
     try:
         return float(str(s).strip().replace("R$", "").replace(" ", "")
@@ -294,7 +312,7 @@ def rv_br_ctx(classe: str) -> dict:
             "pm": brl(pm), "cotacao": brl(preco_live) if preco_live else "⟳",
             "investido": brl(inv), "posicao": brl(at_live),
             "ganho": brl(at_live - inv, sign=True), "pct": pct(ren), "ren": ren,
-            "posicao_raw": at_live,
+            "posicao_raw": at_live, "faixa": faixa_ren(ren),
         })
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
     fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], brl)
@@ -349,6 +367,7 @@ def internacional_ctx(sub_id: str) -> dict:
             "investido": usd(inv_usd), "posicao": usd(at_usd),
             "ganho": usd(at_usd - inv_usd, sign=True), "pct": pct(ren),
             "posicao_r_est": brl(at_usd * usd_brl_v), "posicao_raw": at_usd,
+            "faixa": faixa_ren(ren),
         })
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
     fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], usd)
@@ -409,14 +428,17 @@ def rf_ctx(section_id: str) -> dict:
     tot = 0.0
     for p in posicoes:
         linha = {}
+        ren_raw = None
         for label, key in cfg["colunas"]:
             v = p.get(key)
             if key in _MONEY_KEYS:
                 linha[label] = brl(v)
             elif key in _PCT_KEYS:
                 linha[label] = pct((v or 0) * 100) if v is not None else "—"
+                ren_raw = (v or 0) * 100
             else:
                 linha[label] = str(v) if v is not None else "—"
+        linha["_faixa"] = faixa_ren(ren_raw) if ren_raw is not None else ""
         linhas.append(linha)
         valor_raw = float(p.get(cfg["total_field"]) or 0)
         tot += valor_raw
