@@ -274,10 +274,24 @@ def rv_br_ctx(classe: str) -> dict:
             "pm": brl(pm), "cotacao": brl(preco_live) if preco_live else "⟳",
             "investido": brl(inv), "posicao": brl(at_live),
             "ganho": brl(at_live - inv, sign=True), "pct": pct(ren), "ren": ren,
+            "posicao_raw": at_live,
         })
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
+
+    fatias = []
+    if tot_at > 0:
+        acumulado = 0.0
+        for i, l in enumerate(sorted(linhas, key=lambda x: -x["posicao_raw"])):
+            pct_v = l["posicao_raw"] / tot_at * 100
+            fatias.append({
+                "ativo": l["ativo"], "valor_fmt": brl(l["posicao_raw"]), "pct": pct_v,
+                "cor": CORES_PALETA[i % len(CORES_PALETA)],
+                "de": round(acumulado, 4), "ate": round(acumulado + pct_v, 4),
+            })
+            acumulado += pct_v
+
     ctx.update({
-        "linhas": linhas,
+        "linhas": linhas, "fatias": fatias,
         "tot_investido": brl(tot_inv), "tot_posicao": brl(tot_at),
         "tot_ganho": brl(tot_at - tot_inv, sign=True), "tot_pct": pct(ren_tot),
     })
@@ -692,7 +706,7 @@ def emp_concedidos_ctx() -> dict:
 
 
 # ─── Meus Empréstimos (Lucas é o devedor) ─────────────────────────────────────
-CORES_CREDOR = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
+CORES_PALETA = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
 
 
 def load_emprestimos_meus() -> list[dict]:
@@ -762,7 +776,7 @@ def meus_emprestimos_ctx() -> dict:
             pct_v = valor / total_divida * 100 if total_divida else 0
             fatias.append({
                 "credor": credor, "valor_fmt": brl(valor), "pct": pct_v,
-                "cor": CORES_CREDOR[i % len(CORES_CREDOR)],
+                "cor": CORES_PALETA[i % len(CORES_PALETA)],
                 "de": round(acumulado, 4), "ate": round(acumulado + pct_v, 4),
             })
             acumulado += pct_v
