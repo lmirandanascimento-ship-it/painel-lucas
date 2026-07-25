@@ -36,6 +36,7 @@ SESSION_SECRET = _secret("SESSION_SECRET") or secrets.token_hex(32)
 VERDE = "#1A4731"
 OURO  = "#B8860B"
 CAPITAL_BASE = 684_160.69
+CORES_PALETA = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
 
 # sb_auth: só usado pra validar e-mail/senha no login (chave anon).
 # sb: usado em TODA consulta de dado (chave service_role) — não depende de sessão
@@ -112,6 +113,25 @@ def natural_key(s):
     """Chave de ordenação alfabética "natural": números embutidos no texto
     comparam pelo valor (Emp. 2 antes de Emp. 10), não caractere a caractere."""
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(s or ""))]
+
+
+def fatias_composicao(itens: list[tuple[str, float]], fmt=None) -> list[dict]:
+    """Monta as fatias de um donut de composição a partir de [(nome, valor), ...].
+    fmt formata o valor de cada fatia para exibição (padrão: brl)."""
+    fmt = fmt or brl
+    tot = sum(v for _, v in itens)
+    fatias = []
+    if tot > 0:
+        acumulado = 0.0
+        for i, (nome, valor) in enumerate(sorted(itens, key=lambda x: -x[1])):
+            pct_v = valor / tot * 100
+            fatias.append({
+                "ativo": nome, "valor_fmt": fmt(valor), "pct": pct_v,
+                "cor": CORES_PALETA[i % len(CORES_PALETA)],
+                "de": round(acumulado, 4), "ate": round(acumulado + pct_v, 4),
+            })
+            acumulado += pct_v
+    return fatias
 
 
 def parse_brl(s: str) -> float:
@@ -277,18 +297,7 @@ def rv_br_ctx(classe: str) -> dict:
             "posicao_raw": at_live,
         })
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
-
-    fatias = []
-    if tot_at > 0:
-        acumulado = 0.0
-        for i, l in enumerate(sorted(linhas, key=lambda x: -x["posicao_raw"])):
-            pct_v = l["posicao_raw"] / tot_at * 100
-            fatias.append({
-                "ativo": l["ativo"], "valor_fmt": brl(l["posicao_raw"]), "pct": pct_v,
-                "cor": CORES_PALETA[i % len(CORES_PALETA)],
-                "de": round(acumulado, 4), "ate": round(acumulado + pct_v, 4),
-            })
-            acumulado += pct_v
+    fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], brl)
 
     ctx.update({
         "linhas": linhas, "fatias": fatias,
@@ -339,11 +348,12 @@ def internacional_ctx(sub_id: str) -> dict:
             "cotacao": usd(cotacao_usd) if p_live else "⟳",
             "investido": usd(inv_usd), "posicao": usd(at_usd),
             "ganho": usd(at_usd - inv_usd, sign=True), "pct": pct(ren),
-            "posicao_r_est": brl(at_usd * usd_brl_v),
+            "posicao_r_est": brl(at_usd * usd_brl_v), "posicao_raw": at_usd,
         })
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
+    fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], usd)
     ctx.update({
-        "linhas": linhas,
+        "linhas": linhas, "fatias": fatias,
         "tot_investido": usd(tot_inv), "tot_posicao": usd(tot_at),
         "tot_ganho": usd(tot_at - tot_inv, sign=True), "tot_pct": pct(ren_tot),
         "tot_posicao_r_est": brl(tot_at * usd_brl_v),
@@ -395,6 +405,7 @@ def rf_ctx(section_id: str) -> dict:
         posicoes += dados.get("classes", {}).get(cls, {}).get("posicoes", [])
 
     linhas = []
+    itens_fatia = []
     tot = 0.0
     for p in posicoes:
         linha = {}
@@ -407,11 +418,14 @@ def rf_ctx(section_id: str) -> dict:
             else:
                 linha[label] = str(v) if v is not None else "—"
         linhas.append(linha)
-        tot += float(p.get(cfg["total_field"]) or 0)
+        valor_raw = float(p.get(cfg["total_field"]) or 0)
+        tot += valor_raw
+        itens_fatia.append((str(p.get("nome") or "—"), valor_raw))
 
     return {
         "titulo": cfg["titulo"], "colunas": [c[0] for c in cfg["colunas"]],
         "linhas": linhas, "vazio": not posicoes, "total": brl(tot), "nota": cfg["nota"],
+        "fatias": fatias_composicao(itens_fatia, brl),
     }
 
 
@@ -706,9 +720,6 @@ def emp_concedidos_ctx() -> dict:
 
 
 # ─── Meus Empréstimos (Lucas é o devedor) ─────────────────────────────────────
-CORES_PALETA = [VERDE, "#3A7D5A", OURO, "#D4A017", "#7BA98C", "#C9A227"]
-
-
 def load_emprestimos_meus() -> list[dict]:
     r = sb.table("emprestimos").select("*").eq("status", "ativo").order("credor").execute()
     return r.data or []

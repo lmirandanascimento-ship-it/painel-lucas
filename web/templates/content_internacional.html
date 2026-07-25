@@ -33,6 +33,33 @@
     </div>
   {% endif %}
 </div>
+
+{% if fatias %}
+  <div class="card card-meia" style="margin-top:16px">
+    <div class="card-head">
+      <h3>Composição</h3>
+      <span class="tag">% da posição atual</span>
+    </div>
+    <div class="donut-wrap">
+      <div class="donut" style="background:conic-gradient(
+        {% for f in fatias %}{{ f.cor }} {{ f.de }}% {{ f.ate }}%{{ ", " if not loop.last }}{% endfor %}
+      )">
+        <div class="donut-total">{{ tot_posicao }}<small>total</small></div>
+      </div>
+      <div class="legend">
+        {% for f in fatias %}
+          <div class="legend-row">
+            <span class="dot" style="background:{{ f.cor }}"></span>
+            <span class="name">{{ f.ativo }}</span>
+            <span class="pct">{{ "%.1f"|format(f.pct) }}%</span>
+            <span class="valor">{{ f.valor_fmt }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 <p class="nota">
   PM, Cotação, Investido, Posição, Ganho e % são 100% em dólar — a rentabilidade não
   sofre efeito de câmbio. A coluna "Posição (R$) est." é apenas uma conversão da
