@@ -8,7 +8,7 @@ de fingir que existem.
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Form, Depends
@@ -152,6 +152,47 @@ def faixa_ren(ren) -> str:
     return ""
 
 
+def _freq_label(intervalo_dias: float) -> str:
+    if intervalo_dias <= 45:
+        return "Mensal"
+    if intervalo_dias <= 135:
+        return "Trimestral"
+    if intervalo_dias <= 200:
+        return "Semestral"
+    return "Anual"
+
+
+def calendario_dividendos(tickers_qtd: list[tuple[str, float]], sufixo: str, fmt) -> list[dict]:
+    """Monta o calendário de dividendos por ativo a partir de [(ticker, qtd), ...].
+    fmt formata o valor recebido (brl/usd). Só retorna ativos com pagamentos
+    registrados nos últimos 12 lançamentos e com qtd > 0."""
+    tickers = tuple(t for t, _ in tickers_qtd if t)
+    hist = quotes.fetch_dividendos(tickers, sufixo)
+    qtd_map = dict(tickers_qtd)
+    resultado = []
+    for ticker, pagamentos in hist.items():
+        qtd = qtd_map.get(ticker, 0)
+        if qtd <= 0 or not pagamentos:
+            continue
+        data_ultimo, valor_ultimo = pagamentos[0]
+        if len(pagamentos) >= 2:
+            datas = [datetime.fromisoformat(d) for d, _ in pagamentos]
+            deltas = [(datas[i] - datas[i + 1]).days for i in range(len(datas) - 1)]
+            intervalo_medio = sum(deltas) / len(deltas)
+        else:
+            intervalo_medio = 30
+        proxima_data = datetime.fromisoformat(data_ultimo) + timedelta(days=round(intervalo_medio))
+        resultado.append({
+            "ativo": ticker,
+            "data_ultimo": datetime.fromisoformat(data_ultimo).strftime("%d/%m/%Y"),
+            "recebido_ultimo": fmt(valor_ultimo * qtd),
+            "proxima_data_est": proxima_data.strftime("%d/%m/%Y"),
+            "frequencia": _freq_label(intervalo_medio),
+        })
+    resultado.sort(key=lambda x: natural_key(x["ativo"]))
+    return resultado
+
+
 def parse_brl(s: str) -> float:
     try:
         return float(str(s).strip().replace("R$", "").replace(" ", "")
@@ -293,6 +334,7 @@ def rv_br_ctx(classe: str) -> dict:
         prices, _ = quotes.fetch_precos_brapi(tickers_br, ())
 
     linhas = []
+    div_tickers_qtd = []
     tot_inv = tot_at = 0.0
     for p in posicoes:
         nome = p.get("nome", "")
@@ -314,11 +356,13 @@ def rv_br_ctx(classe: str) -> dict:
             "ganho": brl(at_live - inv, sign=True), "pct": pct(ren), "ren": ren,
             "posicao_raw": at_live, "faixa": faixa_ren(ren),
         })
+        div_tickers_qtd.append((ticker_live, qtd_val))
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
     fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], brl)
+    dividendos = calendario_dividendos(div_tickers_qtd, ".SA", brl)
 
     ctx.update({
-        "linhas": linhas, "fatias": fatias,
+        "linhas": linhas, "fatias": fatias, "dividendos": dividendos,
         "tot_investido": brl(tot_inv), "tot_posicao": brl(tot_at),
         "tot_ganho": brl(tot_at - tot_inv, sign=True), "tot_pct": pct(ren_tot),
     })
@@ -347,6 +391,7 @@ def internacional_ctx(sub_id: str) -> dict:
         return ctx
 
     linhas = []
+    div_tickers_qtd = []
     tot_inv = tot_at = 0.0
     for p in posicoes:
         nome = p.get("nome", "")
@@ -369,10 +414,12 @@ def internacional_ctx(sub_id: str) -> dict:
             "posicao_r_est": brl(at_usd * usd_brl_v), "posicao_raw": at_usd,
             "faixa": faixa_ren(ren),
         })
+        div_tickers_qtd.append((nome, qtd))
     ren_tot = (tot_at / tot_inv - 1) * 100 if tot_inv else 0
     fatias = fatias_composicao([(l["ativo"], l["posicao_raw"]) for l in linhas], usd)
+    dividendos = calendario_dividendos(div_tickers_qtd, "", usd)
     ctx.update({
-        "linhas": linhas, "fatias": fatias,
+        "linhas": linhas, "fatias": fatias, "dividendos": dividendos,
         "tot_investido": usd(tot_inv), "tot_posicao": usd(tot_at),
         "tot_ganho": usd(tot_at - tot_inv, sign=True), "tot_pct": pct(ren_tot),
         "tot_posicao_r_est": brl(tot_at * usd_brl_v),

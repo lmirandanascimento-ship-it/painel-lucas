@@ -31,29 +31,63 @@
   {% endif %}
 </div>
 
-{% if fatias %}
-  <div class="card card-meia" style="margin-top:16px">
-    <div class="card-head">
-      <h3>Composição</h3>
-      <span class="tag">% da posição atual</span>
-    </div>
-    <div class="donut-wrap">
-      <div class="donut" style="background:conic-gradient(
-        {% for f in fatias %}{{ f.cor }} {{ f.de }}% {{ f.ate }}%{{ ", " if not loop.last }}{% endfor %}
-      )">
-        <div class="donut-total">{{ tot_posicao }}<small>total</small></div>
-      </div>
-      <div class="legend">
-        {% for f in fatias %}
-          <div class="legend-row">
-            <span class="dot" style="background:{{ f.cor }}"></span>
-            <span class="name">{{ f.ativo }}</span>
-            <span class="pct">{{ "%.1f"|format(f.pct) }}%</span>
-            <span class="valor">{{ f.valor_fmt }}</span>
+{% if fatias or dividendos %}
+  <div class="row-meia">
+    {% if fatias %}
+      <div class="card card-meia">
+        <div class="card-head">
+          <h3>Composição</h3>
+          <span class="tag">% da posição atual</span>
+        </div>
+        <div class="donut-wrap">
+          <div class="donut" style="background:conic-gradient(
+            {% for f in fatias %}{{ f.cor }} {{ f.de }}% {{ f.ate }}%{{ ", " if not loop.last }}{% endfor %}
+          )">
+            <div class="donut-total">{{ tot_posicao }}<small>total</small></div>
           </div>
-        {% endfor %}
+          <div class="legend">
+            {% for f in fatias %}
+              <div class="legend-row">
+                <span class="dot" style="background:{{ f.cor }}"></span>
+                <span class="name">{{ f.ativo }}</span>
+                <span class="pct">{{ "%.1f"|format(f.pct) }}%</span>
+                <span class="valor">{{ f.valor_fmt }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
       </div>
-    </div>
+    {% endif %}
+
+    {% if dividendos %}
+      <div class="card card-meia">
+        <div class="card-head">
+          <h3>Calendário de Dividendos</h3>
+          <span class="tag">com as cotas atuais</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Ativo</th><th>Último Pgto.</th><th>Recebido</th>
+                  <th>Frequência</th><th>Próximo (est.)</th></tr>
+            </thead>
+            <tbody>
+              {% for d in dividendos %}
+                <tr><td><b>{{ d.ativo }}</b></td><td>{{ d.data_ultimo }}</td>
+                    <td>{{ d.recebido_ultimo }}</td><td>{{ d.frequencia }}</td>
+                    <td>{{ d.proxima_data_est }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="nota" style="margin-top:10px">
+          Recebido = valor pago por cota na data × quantidade atual (não reflete
+          a quantidade que você tinha na época, caso tenha mudado). Próximo
+          pagamento é uma estimativa pelo intervalo médio dos últimos
+          pagamentos, não uma data confirmada pelo emissor.
+        </p>
+      </div>
+    {% endif %}
   </div>
 {% endif %}
 

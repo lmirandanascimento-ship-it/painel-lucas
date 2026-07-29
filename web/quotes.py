@@ -116,3 +116,23 @@ def fetch_precos_brapi(tickers_br: tuple, tickers_us: tuple) -> tuple:
     prices.update(fetch_precos_us(tickers_us))
     usd_brl = fetch_usd_brl()
     return prices, usd_brl
+
+
+@ttl_cache(3600)
+def fetch_dividendos(tickers: tuple, sufixo: str = "") -> dict:
+    """Histórico de dividendos via yfinance (BRAPI não tem esse dado no plano
+    atual). tickers sem sufixo; sufixo ex: ".SA" pra ativos BR. Retorna
+    {ticker: [(data_iso, valor_por_cota), ...]} do mais recente pro mais
+    antigo, só pra tickers com pagamentos registrados."""
+    out: dict = {}
+    for t in tickers:
+        try:
+            div = yf.Ticker(t + sufixo).dividends.tail(12)
+            if div.empty:
+                continue
+            pares = [(idx.date().isoformat(), float(v)) for idx, v in div.items()]
+            pares.sort(key=lambda x: x[0], reverse=True)
+            out[t] = pares
+        except Exception:
+            continue
+    return out
