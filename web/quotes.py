@@ -1,11 +1,19 @@
 """Cotações ao vivo (BRAPI + yfinance) — mesma lógica do app.py original,
 só com um cache simples em memória (TTL) no lugar do st.cache_data."""
+import csv
+import io
 import time
 import functools
 import requests
 import yfinance as yf
 
 BRAPI_TOKEN = "o1ikT8zCSyqQUkNYz224ho"
+
+TESOURO_CSV_URL = (
+    "https://www.tesourotransparente.gov.br/ckan/dataset/"
+    "df56aa42-484a-4a59-8184-7676580c81e3/resource/"
+    "796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
+)
 
 _cache_store: dict = {}
 
@@ -135,4 +143,68 @@ def fetch_dividendos(tickers: tuple, sufixo: str = "") -> dict:
             out[t] = pares
         except Exception:
             continue
+    return out
+
+
+def _br_para_iso(data_br: str) -> str:
+    d, m, a = data_br.split("/")
+    return f"{a}-{m}-{d}"
+
+
+def _iso_para_br(data_iso: str) -> str:
+    a, m, d = data_iso.split("-")
+    return f"{d}/{m}/{a}"
+
+
+@ttl_cache(4 * 3600)
+def fetch_pu_tesouro(vencimentos: tuple, tipo_titulo: str = "Tesouro IPCA+") -> dict:
+    """PU do dia (venda) do Tesouro Direto via CSV público do Tesouro
+    Transparente (gov.br), sem token, atualizado diariamente. vencimentos em
+    ISO (ex: "2040-08-15"). Retorna {vencimento_iso: {"pu": float,
+    "data_base": iso}} com a linha de Data Base mais recente disponível pra
+    cada vencimento."""
+    wanted_br = {_iso_para_br(v) for v in vencimentos}
+    out: dict = {}
+    if not wanted_br:
+        return out
+    try:
+        resp = requests.get(TESOURO_CSV_URL, timeout=30)
+        resp.raise_for_status()
+        leitor = csv.reader(io.StringIO(resp.text), delimiter=";")
+        next(leitor, None)  # cabeçalho
+        for linha in leitor:
+            if len(linha) < 8:
+                continue
+            tipo, venc_br, data_base_br = linha[0], linha[1], linha[2]
+            pu_venda_str = linha[6]
+            if tipo != tipo_titulo or venc_br not in wanted_br:
+                continue
+            venc_iso = _br_para_iso(venc_br)
+            data_base_iso = _br_para_iso(data_base_br)
+            atual = out.get(venc_iso)
+            if atual is None or data_base_iso > atual["data_base"]:
+                try:
+                    pu = float(pu_venda_str.replace(",", "."))
+                except ValueError:
+                    continue
+                out[venc_iso] = {"pu": pu, "data_base": data_base_iso}
+    except Exception:
+        pass
+    return out
+
+
+@ttl_cache(12 * 3600)
+def fetch_ipca_mensal(qtd_meses: int = 60) -> list:
+    """Variação mensal do IPCA (BCB SGS série 433, % ao mês) via API pública
+    do Banco Central, sem token. Retorna [(data_iso_1o_dia_do_mes,
+    variacao_pct), ...] dos últimos qtd_meses meses publicados."""
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados/ultimos/{qtd_meses}?formato=json"
+    out = []
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        for item in resp.json():
+            out.append((_br_para_iso(item["data"]), float(item["valor"])))
+    except Exception:
+        pass
     return out

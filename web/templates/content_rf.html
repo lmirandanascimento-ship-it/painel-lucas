@@ -12,7 +12,15 @@
         <thead><tr>{% for c in colunas %}<th>{{ c }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for l in linhas %}
-            <tr class="{{ l._faixa }}">{% for c in colunas %}<td>{{ l[c] }}</td>{% endfor %}</tr>
+            <tr class="{{ l._faixa }}">
+              {% for c in colunas %}
+                {% if loop.first %}
+                  <td><b>{{ l[c] }}</b>{% if l._ao_vivo %} <span title="Calculado ao vivo">🟢</span>{% endif %}</td>
+                {% else %}
+                  <td>{{ l[c] }}</td>
+                {% endif %}
+              {% endfor %}
+            </tr>
           {% endfor %}
         </tbody>
       </table>

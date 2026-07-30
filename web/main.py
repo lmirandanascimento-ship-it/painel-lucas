@@ -427,6 +427,141 @@ def internacional_ctx(sub_id: str) -> dict:
     return ctx
 
 
+# ─── Renda Fixa — cálculo líquido dinâmico (Tesouro/CDB/CRI-CRA) ─────────────
+TABELA_IR_REGRESSIVA = [(180, 0.225), (360, 0.20), (720, 0.175), (float("inf"), 0.15)]
+TAXA_CUSTODIA_B3_AA = 0.002  # 0,20% a.a. — só cobrada de fato no resgate/vencimento
+                              # desde dez/2024; aqui é simulação "se resgatasse hoje"
+
+
+def calcula_ir(dias_corridos: int, ganho: float) -> float:
+    """IR regressivo sobre o ganho (só incide se positivo)."""
+    if ganho <= 0:
+        return 0.0
+    for limite, aliquota in TABELA_IR_REGRESSIVA:
+        if dias_corridos <= limite:
+            return ganho * aliquota
+    return ganho * TABELA_IR_REGRESSIVA[-1][1]
+
+
+def load_renda_fixa_compras() -> dict:
+    """{nome: {"data_aplicacao": "YYYY-MM-DD", "taxa_contratada_aa": float|None}}
+    — dado que não vem no snapshot (data de aplicação de cada título),
+    cadastrado manualmente na tabela renda_fixa_compras."""
+    try:
+        r = sb.table("renda_fixa_compras").select("*").execute()
+    except Exception:
+        return {}
+    return {row["nome"]: row for row in (r.data or [])}
+
+
+def calculo_liquido_tesouro(qtd: float, investido: float, data_aplicacao_iso: str,
+                             vencimento_iso: str):
+    """PU do dia (Tesouro Transparente) × qtd, IR regressivo sobre o ganho e
+    custódia B3 simulada. Retorna None se não achar PU ao vivo pro
+    vencimento (título sem cotação nesse CSV — cai no fallback do snapshot)."""
+    pu_info = quotes.fetch_pu_tesouro((vencimento_iso,)).get(vencimento_iso)
+    if not pu_info:
+        return None
+    valor_atual = pu_info["pu"] * qtd
+    ganho_bruto = valor_atual - investido
+    dias_corridos = (agora_br().date() - datetime.fromisoformat(data_aplicacao_iso).date()).days
+    ir_devido = calcula_ir(dias_corridos, ganho_bruto)
+    custodia = valor_atual * TAXA_CUSTODIA_B3_AA * (dias_corridos / 365)
+    valor_liquido = valor_atual - ir_devido - custodia
+    return {
+        "valor_atual": valor_atual, "ganho_bruto": ganho_bruto,
+        "ir_devido": ir_devido, "custodia": custodia, "valor_liquido": valor_liquido,
+        "rentab_liquida": (valor_liquido / investido - 1) if investido else 0.0,
+        "data_base_pu": pu_info["data_base"], "dias_corridos": dias_corridos,
+    }
+
+
+def calculo_curva_cri_cra(investido: float, data_aplicacao_iso: str,
+                           taxa_contratada_aa: float, indexador: str) -> dict:
+    """Atualiza a marcação na curva até hoje: IPCA acumulado real (BCB) ×
+    juros contratados, ou só juros compostos se for prefixado. Isento de IR
+    (CRI/CRA). Não é marcação a mercado de verdade (exigiria o fluxo de
+    caixa do papel descontado pela taxa de mercado atual) — é a curva
+    contratada trazida a valor presente, o que já é uma melhora sobre o
+    valor estático do snapshot."""
+    data_aplicacao = datetime.fromisoformat(data_aplicacao_iso).date()
+    dias_corridos = (agora_br().date() - data_aplicacao).days
+    fator_indexador = 1.0
+    if indexador == "IPCA":
+        for data_iso, var_pct in quotes.fetch_ipca_mensal(60):
+            if datetime.fromisoformat(data_iso).date() > data_aplicacao:
+                fator_indexador *= (1 + var_pct / 100)
+    valor_atual = investido * fator_indexador * (1 + taxa_contratada_aa) ** (dias_corridos / 365)
+    return {
+        "valor_atual": valor_atual, "ganho": valor_atual - investido,
+        "rentab": (valor_atual / investido - 1) if investido else 0.0,
+        "dias_corridos": dias_corridos,
+    }
+
+
+def calculo_liquido_cdb(investido: float, data_aplicacao_iso: str,
+                         taxa_contratada_aa: float) -> dict:
+    """Juros compostos (prefixado) por dias corridos + IR regressivo sobre o
+    ganho — CDB não é isento como CRI/CRA/LCI/LCA."""
+    dias_corridos = (agora_br().date() - datetime.fromisoformat(data_aplicacao_iso).date()).days
+    valor_bruto = investido * (1 + taxa_contratada_aa) ** (dias_corridos / 365)
+    ganho_bruto = valor_bruto - investido
+    ir_devido = calcula_ir(dias_corridos, ganho_bruto)
+    valor_liquido = valor_bruto - ir_devido
+    return {
+        "valor_bruto": valor_bruto, "ganho_bruto": ganho_bruto, "ir_devido": ir_devido,
+        "valor_liquido": valor_liquido,
+        "rentab_liquida": (valor_liquido / investido - 1) if investido else 0.0,
+        "dias_corridos": dias_corridos,
+    }
+
+
+def _enriquece_rf_ao_vivo(section_id: str, posicoes: list) -> list:
+    """Tenta trocar os campos estáticos do snapshot por um cálculo ao vivo.
+    Nunca quebra: se faltar a data de aplicação (não cadastrada em
+    renda_fixa_compras) ou não achar PU/índice ao vivo, mantém o
+    comportamento de hoje (campos do snapshot)."""
+    if section_id not in ("tesouro", "cdb", "cricra"):
+        return posicoes
+    compras = load_renda_fixa_compras()
+    out = []
+    for p in posicoes:
+        p = dict(p)
+        compra = compras.get(p.get("nome"))
+        try:
+            if section_id == "tesouro":
+                calc = calculo_liquido_tesouro(
+                    float(p.get("qtd") or 0), float(p.get("investido") or 0),
+                    compra["data_aplicacao"], p.get("vencimento"),
+                ) if compra else None
+                if calc:
+                    p["valor_liquido"] = round(calc["valor_liquido"], 2)
+                    p["rentab_liquida"] = calc["rentab_liquida"]
+                    p["_calc_ao_vivo"] = True
+                else:
+                    p["rentab_liquida"] = p.get("rentab")  # fallback: bruto do snapshot
+            elif section_id == "cdb" and compra and compra.get("taxa_contratada_aa") is not None:
+                calc = calculo_liquido_cdb(float(p.get("investido") or 0),
+                                            compra["data_aplicacao"],
+                                            float(compra["taxa_contratada_aa"]))
+                p["atual"] = round(calc["valor_liquido"], 2)
+                p["ganho"] = round(calc["valor_liquido"] - float(p.get("investido") or 0), 2)
+                p["rentab"] = calc["rentab_liquida"]
+                p["_calc_ao_vivo"] = True
+            elif section_id == "cricra" and compra and compra.get("taxa_contratada_aa") is not None:
+                indexador = "IPCA" if "IPCA" in str(p.get("_estimado") or "") else "PRE"
+                calc = calculo_curva_cri_cra(float(p.get("investido") or 0),
+                                              compra["data_aplicacao"],
+                                              float(compra["taxa_contratada_aa"]), indexador)
+                p["atual"] = round(calc["valor_atual"], 2)
+                p["rentab"] = calc["rentab"]
+                p["_calc_ao_vivo"] = True
+        except Exception:
+            pass
+        out.append(p)
+    return out
+
+
 # ─── Renda Fixa (Tesouro / CRI-CRA / Fundos / CDB-LCI-LCA) ───────────────────
 RF_CONFIG = {
     "tesouro": {
@@ -435,14 +570,20 @@ RF_CONFIG = {
                     ("Taxa", "tipo_taxa"), ("Investido", "investido"),
                     ("Rentab.", "rentab_liquida"), ("Valor Líq.", "valor_liquido")],
         "total_field": "valor_liquido",
-        "nota": "IR regressivo já descontado no Valor Líquido.",
+        "nota": ("🟢 Ao vivo: PU do dia (Tesouro Transparente) com IR regressivo e "
+                 "custódia B3 já descontados (simulação \"se resgatasse hoje\"). Sem o "
+                 "🟢, é o valor bruto do snapshot — falta a data de aplicação cadastrada "
+                 "ou não há PU disponível pra esse título."),
     },
     "cricra": {
         "titulo": "📋 CRI/CRA", "classes": ["CRI/CRA"],
         "colunas": [("Título", "nome"), ("Taxa Mercado", "taxa_mercado"),
                     ("Investido", "investido"), ("Valor Atual", "atual"), ("Rentab.", "rentab")],
         "total_field": "atual",
-        "nota": "CRI/CRA: isentos de IR para pessoa física.",
+        "nota": ("CRI/CRA: isentos de IR para pessoa física. 🟢 Ao vivo: marcação na "
+                 "curva contratada atualizada com o IPCA real (BCB) até hoje — não é "
+                 "marcação a mercado (exigiria o fluxo de caixa do papel descontado pela "
+                 "taxa de mercado atual)."),
     },
     "fundos": {
         "titulo": "💼 Fundos", "classes": ["Fundos"],
@@ -455,7 +596,9 @@ RF_CONFIG = {
         "colunas": [("Título", "nome"), ("Investido", "investido"),
                     ("Atual", "atual"), ("Ganho", "ganho"), ("Rentab.", "rentab")],
         "total_field": "atual",
-        "nota": "LCI/LCA: isentos de IR. CDB: valor bruto (IR no resgate).",
+        "nota": ("LCI/LCA: isentos de IR. CDB: 🟢 ao vivo já com IR regressivo "
+                 "descontado (juros compostos pela taxa contratada); sem o 🟢, valor "
+                 "bruto do snapshot."),
     },
 }
 _MONEY_KEYS = {"atual", "investido", "ganho", "valor_liquido", "posicao_mercado"}
@@ -469,6 +612,7 @@ def rf_ctx(section_id: str) -> dict:
     posicoes = []
     for cls in cfg["classes"]:
         posicoes += dados.get("classes", {}).get(cls, {}).get("posicoes", [])
+    posicoes = _enriquece_rf_ao_vivo(section_id, posicoes)
 
     linhas = []
     itens_fatia = []
@@ -486,6 +630,7 @@ def rf_ctx(section_id: str) -> dict:
             else:
                 linha[label] = str(v) if v is not None else "—"
         linha["_faixa"] = faixa_ren(ren_raw) if ren_raw is not None else ""
+        linha["_ao_vivo"] = bool(p.get("_calc_ao_vivo"))
         linhas.append(linha)
         valor_raw = float(p.get(cfg["total_field"]) or 0)
         tot += valor_raw
