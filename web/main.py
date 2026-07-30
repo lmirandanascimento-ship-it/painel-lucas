@@ -312,6 +312,22 @@ def atualizar_cotacoes_ctx() -> dict:
     }
 
 
+# Ativos válidos conforme o relatório da reunião com o Lucas (confirmado
+# 30/07/2026) — qualquer posição do snapshot de RV/RF que não estiver aqui é
+# ocultada e não entra em nenhum cálculo (total, composição, dividendos etc.).
+# Não afeta Internacional (Leandro confirmou que já está correto lá).
+ATIVOS_VALIDOS_RV_RF = {
+    # Tesouro Direto
+    "IPCA+ 2040", "IPCA+ 2050 (#1)", "NTN-B Principal 2050", "NTN-B Principal 2060",
+    # CRI/CRA
+    "CRA AÇO VERDE - JUN/2029", "CRI MATEUS SUPERM. - JUL/2034",
+    # CDB
+    "CDB XP - AGO/26",
+    # Ações BR / ETF BR / FIIs
+    "MELI34", "COIN11", "XPML11", "LVBI11", "VILG11", "BRCR11", "CXCI11",
+}
+
+
 # ─── RV BR (Ações BR / ETF BR / FIIs) ─────────────────────────────────────────
 RV_BR_CLASSES = {"acoes": "Ações BR", "etfbr": "ETF BR", "fiis": "FII"}
 
@@ -321,6 +337,7 @@ def rv_br_ctx(classe: str) -> dict:
     posicoes_rv = load_posicoes_rv()
     dados = snap_rv.get("dados", {}) if snap_rv else {}
     posicoes = dados.get("classes", {}).get(classe, {}).get("posicoes", [])
+    posicoes = [p for p in posicoes if p.get("nome") in ATIVOS_VALIDOS_RV_RF]
     ctx = {
         "classe": classe, "vazio": not posicoes,
         "data_snapshot": snap_rv.get("data", "—") if snap_rv else "—",
@@ -612,6 +629,7 @@ def rf_ctx(section_id: str) -> dict:
     posicoes = []
     for cls in cfg["classes"]:
         posicoes += dados.get("classes", {}).get(cls, {}).get("posicoes", [])
+    posicoes = [p for p in posicoes if p.get("nome") in ATIVOS_VALIDOS_RV_RF]
     posicoes = _enriquece_rf_ao_vivo(section_id, posicoes)
 
     linhas = []
