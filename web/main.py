@@ -472,11 +472,12 @@ def load_renda_fixa_compras() -> dict:
 
 
 def calculo_liquido_tesouro(qtd: float, investido: float, data_aplicacao_iso: str,
-                             vencimento_iso: str):
-    """PU do dia (Tesouro Transparente) × qtd, IR regressivo sobre o ganho e
-    custódia B3 simulada. Retorna None se não achar PU ao vivo pro
-    vencimento (título sem cotação nesse CSV — cai no fallback do snapshot)."""
-    pu_info = quotes.fetch_pu_tesouro((vencimento_iso,)).get(vencimento_iso)
+                             vencimento_iso: str, pu_por_vencimento: dict):
+    """PU do dia (Tesouro Transparente, buscado uma única vez pra todos os
+    vencimentos por rf_ctx — ver _enriquece_rf_ao_vivo) × qtd, IR regressivo
+    sobre o ganho e custódia B3 simulada. Retorna None se não achar PU ao
+    vivo pro vencimento (título sem cotação nesse CSV — cai no fallback)."""
+    pu_info = pu_por_vencimento.get(vencimento_iso)
     if not pu_info:
         return None
     valor_atual = pu_info["pu"] * qtd
@@ -490,6 +491,7 @@ def calculo_liquido_tesouro(qtd: float, investido: float, data_aplicacao_iso: st
         "ir_devido": ir_devido, "custodia": custodia, "valor_liquido": valor_liquido,
         "rentab_liquida": (valor_liquido / investido - 1) if investido else 0.0,
         "data_base_pu": pu_info["data_base"], "dias_corridos": dias_corridos,
+        "pu": pu_info["pu"],
     }
 
 
@@ -541,22 +543,38 @@ def _enriquece_rf_ao_vivo(section_id: str, posicoes: list) -> list:
     if section_id not in ("tesouro", "cdb", "cricra"):
         return posicoes
     compras = load_renda_fixa_compras()
+    pu_por_vencimento = {}
+    if section_id == "tesouro":
+        # Busca o PU de TODOS os vencimentos de uma vez só — o CSV do Tesouro
+        # Transparente tem ~14MB; buscar um por posição (4x) deixava a aba
+        # muito lenta.
+        vencimentos = tuple(sorted({p.get("vencimento") for p in posicoes if p.get("vencimento")}))
+        pu_por_vencimento = quotes.fetch_pu_tesouro(vencimentos) if vencimentos else {}
     out = []
     for p in posicoes:
         p = dict(p)
         compra = compras.get(p.get("nome"))
         try:
             if section_id == "tesouro":
+                qtd_v = float(p.get("qtd") or 0)
+                investido_v = float(p.get("investido") or 0)
+                pu_compra = round(investido_v / qtd_v, 2) if qtd_v else None
+                p["pu_compra_fmt"] = brl(pu_compra) if pu_compra is not None else "—"
                 calc = calculo_liquido_tesouro(
-                    float(p.get("qtd") or 0), float(p.get("investido") or 0),
-                    compra["data_aplicacao"], p.get("vencimento"),
+                    qtd_v, investido_v, compra["data_aplicacao"], p.get("vencimento"),
+                    pu_por_vencimento,
                 ) if compra else None
                 if calc:
                     p["valor_liquido"] = round(calc["valor_liquido"], 2)
                     p["rentab_liquida"] = calc["rentab_liquida"]
+                    p["pu_dia_fmt"] = brl(calc["pu"])
                     p["_calc_ao_vivo"] = True
                 else:
                     p["rentab_liquida"] = p.get("rentab")  # fallback: bruto do snapshot
+                    # Título sem PU disponível nesse CSV (ex: NTN-B Principal
+                    # 2060, que só existe na variante com cupom) — não
+                    # arrisca mostrar o preço errado, pede pra checar na XP.
+                    p["pu_dia_fmt"] = "Verificar com a XP"
             elif section_id == "cdb" and compra and compra.get("taxa_contratada_aa") is not None:
                 calc = calculo_liquido_cdb(float(p.get("investido") or 0),
                                             compra["data_aplicacao"],
@@ -584,7 +602,8 @@ RF_CONFIG = {
     "tesouro": {
         "titulo": "🏛️ Tesouro", "classes": ["Tesouro Direto"],
         "colunas": [("Título", "nome"), ("Qtd", "qtd"), ("Vencimento", "vencimento"),
-                    ("Taxa", "tipo_taxa"), ("Investido", "investido"),
+                    ("Taxa", "tipo_taxa"), ("PU Compra", "pu_compra_fmt"),
+                    ("PU do Dia", "pu_dia_fmt"), ("Investido", "investido"),
                     ("Rentab.", "rentab_liquida"), ("Valor Líq.", "valor_liquido")],
         "total_field": "valor_liquido",
         "nota": ("🟢 Ao vivo: PU do dia (Tesouro Transparente) com IR regressivo e "

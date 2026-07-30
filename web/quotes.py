@@ -156,19 +156,23 @@ def _iso_para_br(data_iso: str) -> str:
     return f"{d}/{m}/{a}"
 
 
-@ttl_cache(4 * 3600)
+@ttl_cache(20 * 3600)
 def fetch_pu_tesouro(vencimentos: tuple, tipo_titulo: str = "Tesouro IPCA+") -> dict:
     """PU do dia (venda) do Tesouro Direto via CSV público do Tesouro
     Transparente (gov.br), sem token, atualizado diariamente. vencimentos em
     ISO (ex: "2040-08-15"). Retorna {vencimento_iso: {"pu": float,
     "data_base": iso}} com a linha de Data Base mais recente disponível pra
-    cada vencimento."""
+    cada vencimento.
+
+    Cache de 20h: o PU só muda uma vez por dia útil, e o download desse CSV
+    (~14MB) pode levar de alguns segundos a ~20s dependendo do servidor do
+    governo — cache mais longo evita pagar esse custo em toda visita à aba."""
     wanted_br = {_iso_para_br(v) for v in vencimentos}
     out: dict = {}
     if not wanted_br:
         return out
     try:
-        resp = requests.get(TESOURO_CSV_URL, timeout=30)
+        resp = requests.get(TESOURO_CSV_URL, timeout=60)
         resp.raise_for_status()
         leitor = csv.reader(io.StringIO(resp.text), delimiter=";")
         next(leitor, None)  # cabeçalho
