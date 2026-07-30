@@ -868,6 +868,7 @@ def devedor_detalhe_ctx(devedor_id) -> dict:
             "dia_str": f"Dia {int(dv)}" if dv else "—",
             "amort_pct": amort_p, "amort_valor": brl(amort_v),
             "valor_original": brl(orig),
+            "juros_sobre_saldo": bool(e.get("juros_sobre_saldo")),
         })
 
     quitados_lista = []
@@ -1289,6 +1290,15 @@ def emp_concedidos_pagamento(request: Request, emprestimo_id: str = Form(...),
             amort_v = 0.0
             novo_saldo_v = saldo_at
             juros_reg = round(valor_pago_v, 2)
+        elif row.get("juros_sobre_saldo"):
+            # Juros calculados sobre o saldo devedor atual são deduzidos do
+            # valor pago primeiro; o restante abate o saldo (contrato
+            # "CC Sr. Carmino" — juros diminuem e amortização aumenta com o
+            # tempo, conforme o saldo cai).
+            juros_calc = round(saldo_at * float(row["taxa_juros"] or 0), 2)
+            juros_reg = min(valor_pago_v, juros_calc)
+            amort_v = round(valor_pago_v - juros_reg, 2)
+            novo_saldo_v = max(0.0, saldo_at - amort_v)
         else:
             # Amortização pura: o valor pago debita integralmente do saldo.
             # Juros do período ficam registrados como referência, sem abater do valor.
@@ -1401,12 +1411,26 @@ def emp_concedidos_pagamento_salvar(request: Request, pag_id: int, devedor_id: s
             eh_juros_edit = (p.get("tipo", "amortizacao") == "juros")
             novo_val_pago = round(parse_brl(valor), 2)
             juros_digitado = round(parse_brl(juros), 2)
-            # Pagamento "somente juros" nunca abate o saldo (amort = 0), mesmo
-            # após edição — preserva o tipo original do lançamento.
-            nova_amort = 0.0 if eh_juros_edit else novo_val_pago
+            r_e = sb.table("emprestimos_concedidos").select(
+                "juros_sobre_saldo,taxa_juros").eq("id", eid).execute()
+            row_e = r_e.data[0] if r_e.data else {}
+            if eh_juros_edit:
+                # Pagamento "somente juros" nunca abate o saldo (amort = 0),
+                # mesmo após edição — preserva o tipo original do lançamento.
+                nova_amort, juros_final = 0.0, juros_digitado
+            elif row_e.get("juros_sobre_saldo"):
+                # Juros sempre recalculados sobre o saldo antes desse
+                # pagamento — não é editável manualmente (contrato "CC Sr.
+                # Carmino"), preserva a mesma regra de qualquer novo pagamento.
+                saldo_antes_pag = float(p.get("saldo_antes") or 0)
+                juros_calc = round(saldo_antes_pag * float(row_e.get("taxa_juros") or 0), 2)
+                juros_final = min(novo_val_pago, juros_calc)
+                nova_amort = round(novo_val_pago - juros_final, 2)
+            else:
+                nova_amort, juros_final = novo_val_pago, juros_digitado
             sb.table("pagamentos_recebidos").update({
                 "data_pagamento": data, "valor_pago": novo_val_pago,
-                "juros": juros_digitado, "amortizacao": round(nova_amort, 2),
+                "juros": juros_final, "amortizacao": round(nova_amort, 2),
                 "observacao": obs,
             }).eq("id", pag_id).execute()
             _recalcula_saldo_contrato(eid)

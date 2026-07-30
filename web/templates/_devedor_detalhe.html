@@ -83,14 +83,16 @@
             <input type="hidden" name="devedor_id" value="{{ devedor_id }}">
             <div class="campo" style="margin-bottom:12px">
               <label for="pag-contrato">Contrato</label>
-              <select id="pag-contrato" name="emprestimo_id">
-                {% for c in contratos_ativos %}<option value="{{ c.id }}">{{ c.titulo }}</option>{% endfor %}
+              <select id="pag-contrato" name="emprestimo_id" onchange="atualizaLabelAmortizacao()">
+                {% for c in contratos_ativos %}
+                  <option value="{{ c.id }}" data-jss="{{ '1' if c.juros_sobre_saldo else '0' }}">{{ c.titulo }}</option>
+                {% endfor %}
               </select>
             </div>
             <div class="campo" style="margin-bottom:12px">
               <label>Tipo de pagamento</label>
               <div class="radio-inline">
-                <label><input type="radio" name="tipo" value="amortizacao" checked> Amortização (abate o saldo)</label>
+                <label><input type="radio" name="tipo" value="amortizacao" checked> <span id="lbl-amortizacao">Amortização (abate o saldo)</span></label>
                 <label><input type="radio" name="tipo" value="juros"> Somente Juros (não abate o saldo)</label>
               </div>
             </div>
@@ -204,5 +206,21 @@
         {% endfor %}
       {% endif %}
     </div>
+
+    <script>
+      (function () {
+        window.atualizaLabelAmortizacao = function () {
+          var sel = document.getElementById("pag-contrato");
+          var lbl = document.getElementById("lbl-amortizacao");
+          if (!sel || !lbl) return;
+          var opt = sel.options[sel.selectedIndex];
+          var jss = opt && opt.dataset.jss === "1";
+          lbl.textContent = jss
+            ? "Amortização + Juros (parte vai pro juros, resto abate o saldo)"
+            : "Amortização (abate o saldo)";
+        };
+        atualizaLabelAmortizacao();
+      })();
+    </script>
   {% endif %}
 </div>
