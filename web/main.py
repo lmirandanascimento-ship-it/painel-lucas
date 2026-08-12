@@ -323,6 +323,8 @@ ATIVOS_VALIDOS_RV_RF = {
     "CRA AÇO VERDE - JUN/2029", "CRI MATEUS SUPERM. - JUL/2034",
     # CDB
     "CDB XP - AGO/26",
+    # Fundos
+    "Fundo 24 Horas FIRF RL", "Trend Investback V - Inifinite",
     # Ações BR / ETF BR / FIIs
     "MELI34", "COIN11", "XPML11", "LVBI11", "VILG11", "BRCR11", "CXCI11",
 }
