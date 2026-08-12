@@ -16,10 +16,14 @@
         <tbody>
           {% for l in linhas %}
             <tr class="{{ l.faixa }}">
-              <td><b>{{ l.ativo }}</b></td><td>{{ l.setor }}</td><td>{{ l.qtd }}</td>
+              <td><button type="button" class="btn-ativo-link" title="Ver evolução deste ativo"
+                          hx-get="/historico-ativo?tipo=RV&classe={{ classe | urlencode }}&nome={{ l.ativo | urlencode }}"
+                          hx-target="#hist-{{ l.ativo }}" hx-swap="innerHTML"><b>{{ l.ativo }}</b> 📈</button></td>
+              <td>{{ l.setor }}</td><td>{{ l.qtd }}</td>
               <td>{{ l.pm }}</td><td>{{ l.cotacao }}</td><td>{{ l.investido }}</td>
               <td>{{ l.posicao }}</td><td>{{ l.ganho }}</td><td>{{ l.pct }}</td>
             </tr>
+            <tr><td colspan="9" id="hist-{{ l.ativo }}"></td></tr>
           {% endfor %}
           <tr class="total">
             <td>TOTAL</td><td></td><td></td><td></td><td></td>

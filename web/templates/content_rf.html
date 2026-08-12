@@ -15,12 +15,18 @@
             <tr class="{{ l._faixa }}">
               {% for c in colunas %}
                 {% if loop.first %}
-                  <td><b>{{ l[c] }}</b>{% if l._ao_vivo %} <span title="Calculado ao vivo">🟢</span>{% endif %}</td>
+                  <td>
+                    <button type="button" class="btn-ativo-link" title="Ver evolução deste ativo"
+                            hx-get="/historico-ativo?tipo=RF&classe={{ l._classe | urlencode }}&nome={{ l._nome | urlencode }}"
+                            hx-target="#hist-{{ l._nome }}" hx-swap="innerHTML"><b>{{ l[c] }}</b> 📈</button>
+                    {% if l._ao_vivo %} <span title="Calculado ao vivo">🟢</span>{% endif %}
+                  </td>
                 {% else %}
                   <td>{{ l[c] }}</td>
                 {% endif %}
               {% endfor %}
             </tr>
+            <tr><td colspan="{{ colunas | length }}" id="hist-{{ l._nome }}"></td></tr>
           {% endfor %}
         </tbody>
       </table>

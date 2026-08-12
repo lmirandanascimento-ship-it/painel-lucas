@@ -1,0 +1,18 @@
+<details class="atualizacao-detalhes" open>
+  <summary class="atualizacao-status">
+    {{ cor }} {{ hora }} — snapshot de {{ data_fmt }} registrado · {{ n_ok }} ativo(s) com preço ao vivo ·
+    {{ n_sem_fonte }} sem fonte (mantido) · Patrimônio: {{ patrimonio_total }}
+  </summary>
+  <div class="atualizacao-colunas">
+    <div>
+      <div class="ok-titulo">✅ Atualizados com preço ao vivo</div>
+      <ul>{% for item in ok %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% if sem_fonte %}
+    <div>
+      <div class="fail-titulo">⚪ Sem fonte ao vivo (mantido do snapshot anterior)</div>
+      <ul>{% for item in sem_fonte %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+</details>

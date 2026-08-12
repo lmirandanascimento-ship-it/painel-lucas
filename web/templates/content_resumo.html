@@ -7,13 +7,20 @@
 <div class="card-dark">
   <div class="card-head-dark">
     <h3>Cotações</h3>
-    <button class="btn-atualizar" hx-post="/atualizar-cotacoes" hx-target="#resultado-atualizacao"
-            hx-swap="innerHTML" hx-indicator="#spin-cotacoes">
-      🔄 Atualizar Cotações <span id="spin-cotacoes" class="htmx-indicator">·</span>
-    </button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn-atualizar" hx-post="/atualizar-cotacoes" hx-target="#resultado-atualizacao"
+              hx-swap="innerHTML" hx-indicator="#spin-cotacoes">
+        🔄 Atualizar Cotações <span id="spin-cotacoes" class="htmx-indicator">·</span>
+      </button>
+      <button class="btn-atualizar" hx-post="/registrar-posicao-agora" hx-target="#resultado-atualizacao"
+              hx-swap="innerHTML" hx-indicator="#spin-registro"
+              hx-confirm="Registrar um snapshot novo com o preço de hoje pra cada ativo com fonte ao vivo? Isso grava um ponto novo na evolução histórica (ou atualiza o de hoje, se já tiver clicado antes).">
+        📌 Registrar Posição Agora <span id="spin-registro" class="htmx-indicator">·</span>
+      </button>
+    </div>
   </div>
   <div id="resultado-atualizacao">
-    <p class="atualizacao-vazio">Clique em "Atualizar Cotações" pra buscar os preços mais recentes (USD/BRL, ações, FIIs e ativos internacionais).</p>
+    <p class="atualizacao-vazio">"Atualizar Cotações" busca os preços mais recentes pra exibição. "Registrar Posição Agora" grava um snapshot novo (preço ao vivo) na evolução histórica — use pra acompanhar o desempenho de cada ativo ao longo do tempo.</p>
   </div>
 </div>
 

@@ -1,0 +1,33 @@
+{% if vazio %}
+  <div class="hist-ativo-box">
+    <p style="color:var(--muted); margin:0">Sem histórico suficiente pra {{ ativo }} ainda — precisa de pelo menos um
+      snapshot anterior com esse ativo registrado.</p>
+  </div>
+{% else %}
+  <div class="hist-ativo-box">
+    <div class="hist-ativo-head">
+      <div>
+        <b>{{ ativo }}</b> — evolução da rentabilidade ({{ n_pontos }} registro{{ "s" if n_pontos > 1 else "" }})
+        <span class="muted-info">· última: {{ kpi_rentab }} · posição atual: {{ kpi_atual }}</span>
+      </div>
+      <button type="button" class="btn-secundario btn-sm" hx-get="/historico-ativo/fechar"
+              hx-target="closest td" hx-swap="innerHTML">✕ Fechar</button>
+    </div>
+    <div class="evo-svg-wrap">
+      <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" preserveAspectRatio="none">
+        <line class="evo-linha-base" x1="0" y1="{{ y_zero }}" x2="{{ svg_w }}" y2="{{ y_zero }}" />
+        <polyline class="evo-linha-patrimonio" points="{{ pontos_svg }}" />
+      </svg>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Investido</th><th>Posição</th><th>Rentab.</th></tr></thead>
+        <tbody>
+          {% for h in tabela %}
+            <tr><td>{{ h.data }}</td><td>{{ h.investido }}</td><td>{{ h.atual }}</td><td>{{ h.rentab }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}

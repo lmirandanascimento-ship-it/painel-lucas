@@ -134,6 +134,21 @@ def fatias_composicao(itens: list[tuple[str, float]], fmt=None) -> list[dict]:
     return fatias
 
 
+def agrega_classe(posicoes: list) -> dict:
+    """Recalcula os totais agregados de uma classe do snapshot (atual/ganho/
+    investido/rentab) a partir das posições — resumo_ctx() lê esses
+    agregados diretamente pro gráfico de composição do Resumo, não
+    recalcula das posições, então precisam ficar sempre em sincronia."""
+    if not posicoes:
+        return {"atual": 0.0, "ganho": 0.0, "investido": 0.0, "rentab": 0.0}
+    investido = round(sum(float(p["investido"]) for p in posicoes), 2)
+    atual = round(sum(float(p["atual"] if p.get("atual") is not None else p.get("valor_liquido", 0))
+                       for p in posicoes), 2)
+    ganho = round(atual - investido, 2)
+    rentab = round(ganho / investido, 6) if investido else 0.0
+    return {"atual": atual, "ganho": ganho, "investido": investido, "rentab": rentab}
+
+
 def faixa_ren(ren) -> str:
     """Classe CSS de destaque conforme a rentabilidade (ren em %, ex: 15.0 = 15%):
     < -20% vermelho, -20% a -10% amarelo, +10% a +20% azul, > +20% verde."""
@@ -649,7 +664,10 @@ def rf_ctx(section_id: str) -> dict:
     dados = snap_rf.get("dados", {}) if snap_rf else {}
     posicoes = []
     for cls in cfg["classes"]:
-        posicoes += dados.get("classes", {}).get(cls, {}).get("posicoes", [])
+        for p in dados.get("classes", {}).get(cls, {}).get("posicoes", []):
+            p = dict(p)
+            p["_classe_origem"] = cls
+            posicoes.append(p)
     posicoes = [p for p in posicoes if p.get("nome") in ATIVOS_VALIDOS_RV_RF]
     posicoes = _enriquece_rf_ao_vivo(section_id, posicoes)
 
@@ -670,6 +688,8 @@ def rf_ctx(section_id: str) -> dict:
                 linha[label] = str(v) if v is not None else "—"
         linha["_faixa"] = faixa_ren(ren_raw) if ren_raw is not None else ""
         linha["_ao_vivo"] = bool(p.get("_calc_ao_vivo"))
+        linha["_classe"] = p.get("_classe_origem", cfg["classes"][0])
+        linha["_nome"] = p.get("nome", "")
         linhas.append(linha)
         valor_raw = float(p.get(cfg["total_field"]) or 0)
         tot += valor_raw
@@ -726,6 +746,262 @@ def evolucao_ctx() -> dict:
         "svg_w": largura, "svg_h": altura,
         "pontos_patrimonio": pontos_patrimonio, "y_base": y_base,
         "tabela": tabela,
+    }
+
+
+def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
+    """Varre todos os snapshots de `tipo` (RV/RF), extrai a posição `nome`
+    dentro de `classe` de cada um e monta a evolução (rentabilidade %) desse
+    ativo específico ao longo do tempo — ignora snapshots onde o ativo ainda
+    não existia ou já não consta mais."""
+    r = sb.table("carteira_snapshots").select("data,dados").eq("tipo", tipo).order("data").execute()
+    pontos = []
+    for row in (r.data or []):
+        posicoes = row.get("dados", {}).get("classes", {}).get(classe, {}).get("posicoes", [])
+        p = next((x for x in posicoes if x.get("nome") == nome), None)
+        if not p:
+            continue
+        investido = float(p.get("investido") or 0)
+        atual = p.get("atual")
+        if atual is None:
+            atual = p.get("valor_liquido")
+        if atual is None or not investido:
+            continue
+        pontos.append({"data": row["data"], "investido": investido, "atual": float(atual),
+                        "rentab": (float(atual) / investido - 1) * 100})
+
+    ctx = {"vazio": not pontos, "ativo": nome}
+    if not pontos:
+        return ctx
+
+    valores = [p["rentab"] for p in pontos]
+    vmin, vmax = min(valores + [0.0]), max(valores + [0.0])
+    pad = (vmax - vmin) * 0.15 or 5
+    vmin -= pad
+    vmax += pad
+    largura, altura = 480, 160
+    n = len(pontos)
+
+    def x_of(i):
+        return 0 if n == 1 else round(i / (n - 1) * largura, 1)
+
+    def y_of(v):
+        return round(altura - (v - vmin) / (vmax - vmin) * altura, 1)
+
+    pontos_svg = " ".join(f"{x_of(i)},{y_of(p['rentab'])}" for i, p in enumerate(pontos))
+    ultimo = pontos[-1]
+
+    tabela = []
+    for p in reversed(pontos):
+        tabela.append({
+            "data": datetime.fromisoformat(p["data"]).strftime("%d/%m/%Y"),
+            "investido": brl(p["investido"]), "atual": brl(p["atual"]), "rentab": pct(p["rentab"]),
+        })
+
+    ctx.update({
+        "vazio": False, "svg_w": largura, "svg_h": altura,
+        "pontos_svg": pontos_svg, "y_zero": y_of(0.0),
+        "kpi_rentab": pct(ultimo["rentab"]), "kpi_atual": brl(ultimo["atual"]),
+        "n_pontos": n, "tabela": tabela,
+    })
+    return ctx
+
+
+def _upsert_snapshot(tipo: str, data_iso: str, dados_json: dict, usd_brl_v,
+                      tot_investido: float, tot_atual: float) -> None:
+    """Grava um snapshot novo, ou atualiza o de hoje se já existir (evita
+    duplicar quando o botão "Registrar Posição Agora" é clicado mais de uma
+    vez no mesmo dia)."""
+    existe = sb.table("carteira_snapshots").select("id").eq("tipo", tipo).eq("data", data_iso).execute()
+    payload = {"dados": dados_json, "usd_brl": usd_brl_v,
+               "total_investido": tot_investido, "total_atual": tot_atual}
+    if existe.data:
+        sb.table("carteira_snapshots").update(payload).eq("id", existe.data[0]["id"]).execute()
+    else:
+        sb.table("carteira_snapshots").insert({"tipo": tipo, "data": data_iso, **payload}).execute()
+
+
+def _sincroniza_rv_posicoes(classes_rv: dict, data_iso: str) -> None:
+    """Mantém carteira_rv_posicoes (tabela auxiliar só pra saber quais
+    tickers buscar cotação ao vivo em rv_br_ctx/internacional_ctx) em
+    sincronia com a composição atual."""
+    linhas = []
+    for cls, obj in classes_rv.items():
+        for p in obj.get("posicoes", []):
+            moeda = "USD" if cls in ("REITs", "Stocks", "ETF USA") else "BRL"
+            qtd = float(p.get("qtd") or 0)
+            preco_pago = p.get("preco_pago_usd") or p.get("preco_pago_brl")
+            if preco_pago is None:
+                investido = float(p.get("investido") or 0)
+                preco_pago = round(investido / qtd, 4) if qtd else 0.0
+            linhas.append({
+                "data_snapshot": data_iso, "classe": cls, "ticker": p.get("nome"),
+                "nome": p.get("nome"), "setor": p.get("setor", ""), "qtd": qtd,
+                "preco_pago": float(preco_pago), "moeda": moeda,
+                "valor_investido_brl": float(p.get("investido") or 0),
+            })
+    try:
+        sb.table("carteira_rv_posicoes").delete().eq("data_snapshot", data_iso).execute()
+        if linhas:
+            sb.table("carteira_rv_posicoes").insert(linhas).execute()
+    except Exception:
+        pass
+
+
+def registrar_posicao_agora_ctx() -> dict:
+    """Gera (ou atualiza, se já existir uma de hoje) um snapshot novo pra RV
+    e RF usando cotação ao vivo em cada ativo que tem fonte disponível —
+    mantém qtd/investido do snapshot mais recente (assume que a composição
+    não mudou desde a última importação de relatório, só o preço). Nunca
+    inventa número: ativo sem fonte ao vivo (Fundos, LCI/LCA, CRI/CRA ou CDB
+    sem data cadastrada, NTN-B Principal 2060) fica exatamente como estava."""
+    hoje = agora_br().date().isoformat()
+    snap_rv_antigo = load_snapshot("RV")
+    snap_rf_antigo = load_snapshot("RF")
+    ok: list[str] = []
+    sem_fonte: list[str] = []
+
+    # ── RV: Ações BR / ETF BR / FII (BRAPI) ──
+    classes_rv = {cls: {"posicoes": [dict(p) for p in obj.get("posicoes", [])]}
+                  for cls, obj in snap_rv_antigo.get("dados", {}).get("classes", {}).items()} \
+        if snap_rv_antigo else {}
+
+    tickers_br = tuple(p["nome"] for cls in ("Ações BR", "ETF BR", "FII")
+                        for p in classes_rv.get(cls, {}).get("posicoes", []))
+    precos_br = quotes.fetch_precos_brapi(tickers_br, ())[0] if tickers_br else {}
+
+    for cls in ("Ações BR", "ETF BR", "FII"):
+        for p in classes_rv.get(cls, {}).get("posicoes", []):
+            nome = p.get("nome", "")
+            preco_live = precos_br.get(nome)
+            qtd = float(p.get("qtd") or 0)
+            investido = float(p.get("investido") or 0)
+            if preco_live and qtd:
+                atual = round(preco_live * qtd, 2)
+                p.update({"atual": atual, "preco_atual_brl": preco_live,
+                           "ganho": round(atual - investido, 2),
+                           "rentab": round(atual / investido - 1, 6) if investido else 0.0})
+                ok.append(nome)
+            else:
+                sem_fonte.append(nome)
+
+    # ── RV: REITs / Stocks / ETF USA (yfinance) ──
+    usd_brl_hoje = quotes.fetch_usd_brl()
+    tickers_us = tuple(p["nome"] for cls in ("REITs", "Stocks", "ETF USA")
+                        for p in classes_rv.get(cls, {}).get("posicoes", []))
+    precos_us = quotes.fetch_precos_us(tickers_us) if tickers_us else {}
+
+    for cls in ("REITs", "Stocks", "ETF USA"):
+        for p in classes_rv.get(cls, {}).get("posicoes", []):
+            nome = p.get("nome", "")
+            preco_live = precos_us.get(nome)
+            qtd = float(p.get("qtd") or 0)
+            pm_usd = float(p.get("preco_pago_usd") or 0)
+            investido_brl = float(p.get("investido") or 0)
+            if preco_live and qtd:
+                atual_usd = round(preco_live * qtd, 2)
+                atual_brl = round(atual_usd * usd_brl_hoje, 2)
+                inv_usd = round(qtd * pm_usd, 2) if pm_usd else None
+                p.update({"atual": atual_brl, "preco_atual_usd": preco_live, "usd_brl": usd_brl_hoje,
+                           "ganho": round(atual_brl - investido_brl, 2),
+                           "rentab": round(atual_usd / inv_usd - 1, 6) if inv_usd else 0.0})
+                ok.append(nome)
+            else:
+                sem_fonte.append(nome)
+
+    for obj in classes_rv.values():
+        obj.update(agrega_classe(obj["posicoes"]))
+    tot_investido_rv = round(sum(c["investido"] for c in classes_rv.values()), 2)
+    tot_atual_rv = round(sum(c["atual"] for c in classes_rv.values()), 2)
+    dados_rv_novo = {"classes": classes_rv}
+
+    # ── RF: Tesouro Direto (Tesouro Transparente) ──
+    classes_rf = {cls: {"posicoes": [dict(p) for p in obj.get("posicoes", [])]}
+                  for cls, obj in snap_rf_antigo.get("dados", {}).get("classes", {}).items()} \
+        if snap_rf_antigo else {}
+
+    compras = load_renda_fixa_compras()
+    tesouro_posicoes = classes_rf.get("Tesouro Direto", {}).get("posicoes", [])
+    vencimentos = tuple(sorted({p.get("vencimento") for p in tesouro_posicoes if p.get("vencimento")}))
+    pu_ao_vivo = quotes.fetch_pu_tesouro(vencimentos) if vencimentos else {}
+    for p in tesouro_posicoes:
+        nome = p.get("nome", "")
+        pu_info = pu_ao_vivo.get(p.get("vencimento"))
+        qtd = float(p.get("qtd") or 0)
+        investido = float(p.get("investido") or 0)
+        if pu_info and qtd:
+            atual = round(pu_info["pu"] * qtd, 2)
+            p.update({"pu_atual": pu_info["pu"], "atual": atual, "valor_liquido": atual,
+                       "ganho": round(atual - investido, 2),
+                       "rentab": round(atual / investido - 1, 6) if investido else 0.0})
+            ok.append(nome)
+        else:
+            sem_fonte.append(nome)
+
+    # ── RF: CDB / CRI-CRA com data de compra cadastrada ──
+    for cls in ("CDB", "CRI/CRA"):
+        for p in classes_rf.get(cls, {}).get("posicoes", []):
+            nome = p.get("nome", "")
+            compra = compras.get(nome)
+            investido = float(p.get("investido") or 0)
+            if compra and compra.get("taxa_contratada_aa") is not None:
+                if cls == "CDB":
+                    calc = calculo_liquido_cdb(investido, compra["data_aplicacao"],
+                                                float(compra["taxa_contratada_aa"]))
+                    atual = round(calc["valor_liquido"], 2)
+                else:
+                    indexador = "IPCA" if "IPCA" in str(p.get("_estimado") or "") else "PRE"
+                    calc = calculo_curva_cri_cra(investido, compra["data_aplicacao"],
+                                                  float(compra["taxa_contratada_aa"]), indexador)
+                    atual = round(calc["valor_atual"], 2)
+                    p["pu"] = atual
+                    p["valor_liquido"] = atual
+                p.update({"atual": atual, "ganho": round(atual - investido, 2),
+                           "rentab": round(atual / investido - 1, 6) if investido else 0.0})
+                ok.append(nome)
+            else:
+                sem_fonte.append(nome)
+
+    # Fundos / LCI-LCA: sem fonte ao vivo possível, ficam como estavam.
+    for cls in ("Fundos", "LCI/LCA"):
+        for p in classes_rf.get(cls, {}).get("posicoes", []):
+            sem_fonte.append(p.get("nome", ""))
+
+    for obj in classes_rf.values():
+        obj.update(agrega_classe(obj["posicoes"]))
+    tot_investido_rf = round(sum(c["investido"] for c in classes_rf.values()), 2)
+    tot_atual_rf = round(sum(c["atual"] for c in classes_rf.values()), 2)
+    dados_rf_novo = {"classes": classes_rf}
+
+    _upsert_snapshot("RV", hoje, dados_rv_novo, usd_brl_hoje, tot_investido_rv, tot_atual_rv)
+    _upsert_snapshot("RF", hoje, dados_rf_novo, None, tot_investido_rf, tot_atual_rf)
+
+    CLASSES_INTL = {"REITs", "Stocks", "ETF USA"}
+    internacional = round(sum(classes_rv.get(c, {}).get("atual", 0) for c in CLASSES_INTL), 2)
+    total_atual_geral = round(tot_atual_rv + tot_atual_rf, 2)
+    nacional = round(total_atual_geral - internacional, 2)
+    total_ganho = round(total_atual_geral - CAPITAL_BASE, 2)
+    total_rentab = round(total_ganho / CAPITAL_BASE * 100, 4) if CAPITAL_BASE else 0.0
+    hist_payload = {
+        "data": hoje, "total_atual": total_atual_geral, "total_investido": CAPITAL_BASE,
+        "total_ganho": total_ganho, "total_rentab": total_rentab,
+        "rv_atual": tot_atual_rv, "rf_atual": tot_atual_rf,
+        "nacional": nacional, "internacional": internacional,
+    }
+    existe_hist = sb.table("carteira_historico").select("id").eq("data", hoje).execute()
+    if existe_hist.data:
+        sb.table("carteira_historico").update(hist_payload).eq("id", existe_hist.data[0]["id"]).execute()
+    else:
+        sb.table("carteira_historico").insert(hist_payload).execute()
+
+    _sincroniza_rv_posicoes(classes_rv, hoje)
+
+    n_ok, n_sem = len(ok), len(sem_fonte)
+    cor = "🟢" if n_sem == 0 else ("🟡" if n_ok > 0 else "🔴")
+    return {
+        "ok": ok, "sem_fonte": sem_fonte, "n_ok": n_ok, "n_sem_fonte": n_sem, "cor": cor,
+        "hora": agora_br().strftime("%H:%M:%S"), "data_fmt": datetime.fromisoformat(hoje).strftime("%d/%m/%Y"),
+        "patrimonio_total": brl(total_atual_geral),
     }
 
 
@@ -1154,6 +1430,29 @@ def atualizar_cotacoes(request: Request):
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "atualizacao_resultado.html",
                                        atualizar_cotacoes_ctx())
+
+
+@app.post("/registrar-posicao-agora", response_class=HTMLResponse)
+def registrar_posicao_agora(request: Request):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "registro_posicao_resultado.html",
+                                       registrar_posicao_agora_ctx())
+
+
+@app.get("/historico-ativo", response_class=HTMLResponse)
+def historico_ativo(request: Request, tipo: str, classe: str, nome: str):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    ctx = historico_ativo_ctx(tipo, classe, nome)
+    return templates.TemplateResponse(request, "_historico_ativo.html", ctx)
+
+
+@app.get("/historico-ativo/fechar", response_class=HTMLResponse)
+def historico_ativo_fechar(request: Request):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    return HTMLResponse("")
 
 
 @app.post("/escritorio/lancar", response_class=HTMLResponse)

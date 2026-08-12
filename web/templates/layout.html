@@ -193,6 +193,21 @@ tbody tr.ren-baixa-forte td:first-child { border-left:3px solid var(--neg); }
 .evo-linha-saldo { stroke:var(--verde); stroke-width:2.5; fill:none; }
 .evo-barra { fill:var(--gold); opacity:.8; }
 
+/* ── Histórico de rentabilidade por ativo (linha expansível) ── */
+.hist-ativo-box {
+  background:var(--bg); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; margin:4px 0;
+}
+.hist-ativo-head {
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  flex-wrap:wrap; margin-bottom:10px; font-size:.88rem;
+}
+.btn-ativo-link {
+  border:none; background:transparent; padding:0; font:inherit; color:inherit;
+  cursor:pointer; text-align:left;
+}
+.btn-ativo-link:hover { color:var(--verde); text-decoration:underline; }
+
 /* ── Formulários ── */
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:4px; }
 .form-grid.form-1col { grid-template-columns:1fr; }
