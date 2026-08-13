@@ -18,8 +18,8 @@
         <line class="evo-linha-base" x1="0" y1="{{ y_zero }}" x2="{{ svg_w }}" y2="{{ y_zero }}" />
         <polyline class="evo-linha-patrimonio" points="{{ pontos_svg }}" />
         {% for m in marcadores %}
-          <circle class="evo-ponto" cx="{{ m.x }}" cy="{{ m.y }}" r="3.2">
-            <title>{{ m.data_completa }} · {{ m.rentab_fmt }}</title>
+          <circle class="evo-ponto{{ ' evo-ponto-nota' if m.nota_pm else '' }}" cx="{{ m.x }}" cy="{{ m.y }}" r="3.2">
+            <title>{{ m.data_completa }} · {{ m.rentab_fmt }}{{ ' · ' ~ m.nota_pm if m.nota_pm else '' }}</title>
           </circle>
           <text class="evo-data-label" x="{{ m.x }}" y="{{ altura_plot + 14 }}"
                 transform="rotate(-40 {{ m.x }} {{ altura_plot + 14 }})">{{ m.data_curta }}</text>
@@ -31,7 +31,11 @@
         <thead><tr><th>Data</th><th>Investido</th><th>Posição</th><th>Rentab.</th></tr></thead>
         <tbody>
           {% for h in tabela %}
-            <tr><td>{{ h.data }}</td><td>{{ h.investido }}</td><td>{{ h.atual }}</td><td>{{ h.rentab }}</td></tr>
+            <tr>
+              <td>{{ h.data }}</td>
+              <td>{{ h.investido }}{% if h.nota_pm %} <span class="nota-pm-icone" title="{{ h.nota_pm }}">ⓘ</span>{% endif %}</td>
+              <td>{{ h.atual }}</td><td>{{ h.rentab }}</td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>

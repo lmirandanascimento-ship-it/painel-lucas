@@ -768,7 +768,24 @@ def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
         if atual is None or not investido:
             continue
         pontos.append({"data": row["data"], "investido": investido, "atual": float(atual),
+                        "qtd": float(p.get("qtd") or 0) or None,
                         "rentab": (float(atual) / investido - 1) * 100})
+
+    # Marca os pontos onde o "investido" mudou de um snapshot pro seguinte SEM
+    # mudança de quantidade — ou seja, não foi aporte/resgate, foi um ajuste
+    # de preço médio (normalmente uma correção feita numa importação de
+    # relatório). Só afirma isso quando há evidência (qtd presente e igual
+    # nos dois pontos) — em ativos sem qtd (CDB, CRI/CRA, Fundos) fica em
+    # silêncio, porque não dá pra distinguir de um aporte real.
+    for i in range(1, len(pontos)):
+        atual_p, anterior_p = pontos[i], pontos[i - 1]
+        if (atual_p["qtd"] and anterior_p["qtd"] and atual_p["qtd"] == anterior_p["qtd"]
+                and atual_p["investido"] != anterior_p["investido"]):
+            pm_de = anterior_p["investido"] / anterior_p["qtd"]
+            pm_para = atual_p["investido"] / atual_p["qtd"]
+            atual_p["nota_pm"] = (f"Preço médio ajustado nesta atualização (quantidade não mudou: "
+                                   f"{anterior_p['qtd']:g}) — de {brl(pm_de)} para {brl(pm_para)} por "
+                                   f"unidade. Não é uma nova aplicação nem resgate.")
 
     ctx = {"vazio": not pontos, "ativo": nome}
     if not pontos:
@@ -804,6 +821,7 @@ def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
             "data_curta": dt.strftime("%d/%m"),
             "data_completa": dt.strftime("%d/%m/%Y"),
             "rentab_fmt": pct(p["rentab"]),
+            "nota_pm": p.get("nota_pm"),
         })
 
     tabela = []
@@ -811,6 +829,7 @@ def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
         tabela.append({
             "data": datetime.fromisoformat(p["data"]).strftime("%d/%m/%Y"),
             "investido": brl(p["investido"]), "atual": brl(p["atual"]), "rentab": pct(p["rentab"]),
+            "nota_pm": p.get("nota_pm"),
         })
 
     ctx.update({
