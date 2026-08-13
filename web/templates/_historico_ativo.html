@@ -14,9 +14,16 @@
               hx-target="closest td" hx-swap="innerHTML">✕ Fechar</button>
     </div>
     <div class="evo-svg-wrap">
-      <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" preserveAspectRatio="none">
+      <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}">
         <line class="evo-linha-base" x1="0" y1="{{ y_zero }}" x2="{{ svg_w }}" y2="{{ y_zero }}" />
         <polyline class="evo-linha-patrimonio" points="{{ pontos_svg }}" />
+        {% for m in marcadores %}
+          <circle class="evo-ponto" cx="{{ m.x }}" cy="{{ m.y }}" r="3.2">
+            <title>{{ m.data_completa }} · {{ m.rentab_fmt }}</title>
+          </circle>
+          <text class="evo-data-label" x="{{ m.x }}" y="{{ altura_plot + 14 }}"
+                transform="rotate(-40 {{ m.x }} {{ altura_plot + 14 }})">{{ m.data_curta }}</text>
+        {% endfor %}
       </svg>
     </div>
     <div class="table-wrap">

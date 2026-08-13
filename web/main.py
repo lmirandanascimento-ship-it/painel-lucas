@@ -779,17 +779,32 @@ def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
     pad = (vmax - vmin) * 0.15 or 5
     vmin -= pad
     vmax += pad
-    largura, altura = 480, 160
+    # área do gráfico (altura) + faixa extra embaixo (rotulo) pras datas rotacionadas.
+    # pad_esq/pad_dir dão espaço pro rótulo rotacionado (-40°) do primeiro/último ponto
+    # não vazar pra fora do viewBox (text-anchor:end joga o texto pra esquerda do x do ponto).
+    largura, altura, faixa_datas = 480, 160, 46
+    pad_esq, pad_dir = 34, 8
+    svg_h = altura + faixa_datas
     n = len(pontos)
 
     def x_of(i):
-        return 0 if n == 1 else round(i / (n - 1) * largura, 1)
+        return pad_esq if n == 1 else round(pad_esq + i / (n - 1) * (largura - pad_esq - pad_dir), 1)
 
     def y_of(v):
         return round(altura - (v - vmin) / (vmax - vmin) * altura, 1)
 
     pontos_svg = " ".join(f"{x_of(i)},{y_of(p['rentab'])}" for i, p in enumerate(pontos))
     ultimo = pontos[-1]
+
+    marcadores = []
+    for i, p in enumerate(pontos):
+        dt = datetime.fromisoformat(p["data"])
+        marcadores.append({
+            "x": x_of(i), "y": y_of(p["rentab"]),
+            "data_curta": dt.strftime("%d/%m"),
+            "data_completa": dt.strftime("%d/%m/%Y"),
+            "rentab_fmt": pct(p["rentab"]),
+        })
 
     tabela = []
     for p in reversed(pontos):
@@ -799,8 +814,8 @@ def historico_ativo_ctx(tipo: str, classe: str, nome: str) -> dict:
         })
 
     ctx.update({
-        "vazio": False, "svg_w": largura, "svg_h": altura,
-        "pontos_svg": pontos_svg, "y_zero": y_of(0.0),
+        "vazio": False, "svg_w": largura, "svg_h": svg_h, "altura_plot": altura,
+        "pontos_svg": pontos_svg, "y_zero": y_of(0.0), "marcadores": marcadores,
         "kpi_rentab": pct(ultimo["rentab"]), "kpi_atual": brl(ultimo["atual"]),
         "n_pontos": n, "tabela": tabela,
     })
